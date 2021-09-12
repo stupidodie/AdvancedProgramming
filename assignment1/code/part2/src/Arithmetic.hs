@@ -47,7 +47,7 @@ evalFull :: Exp -> Env -> Integer
 evalFull (If test yes no) env= if evalFull test env==0 then evalFull no env else evalFull yes env
 evalFull (Var vname) env=
   case env vname  of 
-    Nothing-> error ("no currenr value for " ++ vname )
+    Nothing-> error ("no current value for " ++ vname )
     Just value -> value
 evalFull (Let var def body ) env = evalFull body (extendEnv var (evalFull def env) env)
 evalFull (Sum var from to body) env 
