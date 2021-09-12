@@ -37,6 +37,8 @@ evalSimple (Div e1 e2)
   |evalSimple e2  == 0  = error "Error! A division by zero!"
   |otherwise =evalSimple e1 `div` evalSimple e2 
 evalSimple _ =error "Can't match the type!"
+
+
 extendEnv :: VName -> Integer -> Env -> Env
 extendEnv v n r = \x -> if v==x then Just n else r x
 
@@ -63,15 +65,14 @@ evalFull (Div e1 e2) env
   |evalFull e2 env == 0  = error "Error! A division by zero!"
   |otherwise =evalFull e1 env `div` evalFull e2 env 
 
+-- fmap' is a Higher Order function which takes a function 
+-- as argument and to apply on the Either Type when it 
+-- has the Right value on both two arguments
 fmap'::(Ord a)=>(Integer->Integer->a)->Either ArithError Integer -> Either ArithError Integer ->Either ArithError a
 fmap' f (Right r1) (Right r2) =Right (f r1 r2)
 fmap' _ (Left r1) _ = Left r1
 fmap' _  _ (Left r2)  =Left r2
 
-
-extendEnv' :: VName -> Either ArithError Integer -> Env -> Env
-extendEnv' v (Right n) r = \x -> if v==x then Just n else r x
-extendEnv' _ _ r = r
 
 evalErr :: Exp -> Env -> Either ArithError Integer
 evalErr (If test yes no) env =  
@@ -83,7 +84,6 @@ evalErr (Var vname) env=
   case env vname  of 
     Nothing-> Left (EBadVar vname)
     Just value -> Right value
--- evalErr (Let var def body ) env = evalErr (If (Var var ) body (Var var )) (extendEnv' var (evalErr def env) env)
 evalErr (Let var def body ) env = 
   case evalErr def env of
     (Right value) ->  evalErr body (extendEnv var value env)
@@ -97,15 +97,14 @@ evalErr (Cst e) _ = Right e
 evalErr (Add e1 e2) env =  fmap' (+) (evalErr e1 env)  (evalErr e2 env)
 evalErr (Sub e1 e2) env =  fmap' (-) (evalErr e1 env)  (evalErr e2 env)
 evalErr (Mul e1 e2) env =  fmap' (*) (evalErr e1 env )  (evalErr e2 env)
-evalErr (Pow e1 e2) env =
+evalErr (Pow e1 e2) env = --For the Pow part, first check the if e1 has error, if not then check the Left ENegPower error 
   case evalErr e1 env of
     (Left errorMessage)->Left errorMessage
-    (Right n) ->
+    (Right _) ->
       case evalErr e2 env of
         (Right n) -> if n<0 then Left ENegPower else  if n==0 then Right 1 else fmap' (^) (evalErr e1 env)  (evalErr e2 env)
         (Left errorMessage) -> Left errorMessage
-    
-evalErr (Div e1 e2) env =
+evalErr (Div e1 e2) env = --For the Div part, first check the if e1 has error, if not then check the Left EDivZero error 
   case evalErr e1 env of 
     (Left errorMessage)-> Left errorMessage
     (Right _)->
@@ -113,9 +112,6 @@ evalErr (Div e1 e2) env =
       (Right 0) -> Left EDivZero
       (Right _)-> fmap' div  (evalErr e1 env) ( evalErr e2 env )
       (Left errorMessage)-> Left errorMessage
-
-
-
 
 -- optional parts (if not attempted, leave them unmodified)
 
@@ -125,6 +121,15 @@ showCompact=undefined
 evalEager :: Exp -> Env -> Either ArithError Integer
 evalEager =evalErr
 
+-- The function extendEnv' function unlike the extendEnv function,
+--  it takes the Either ArithError Integer type as an argument rather than 
+--  Integer. So it is need to match to get the Integer inside
+extendEnv' :: VName -> Either ArithError Integer -> Env -> Env
+extendEnv' v (Right n) r = \x -> if v==x then Just n else r x
+extendEnv' _ _ r = r
+
+-- The difference between the function evalLazy and 
+-- the evalErr is the way it's handle the "Let" part  
 evalLazy :: Exp -> Env -> Either ArithError Integer
 evalLazy (If test yes no) env =  
   case fmap' (==) (evalLazy test env) (Right 0) of 
@@ -135,20 +140,22 @@ evalLazy (Var vname) env=
   case env vname  of 
     Nothing-> Left (EBadVar vname)
     Just value -> Right value
-evalLazy (Let var def body ) env = evalLazy body (extendEnv' var (evalLazy def env) env)
+-- For the "Let" part handle, the evalLazy function 
+-- just use the lazy trait to calculate the result 
+evalLazy (Let var def body ) env = evalLazy body (extendEnv' var (evalLazy def env) env) 
 evalLazy (Sum var from to body) env = 
   case fmap' (>) (evalLazy from env ) (evalLazy to env) of
     (Right True) ->  Right 0
     (Right False)->  fmap' (+) (evalLazy (Let var from body) env)  (evalLazy (Sum var (Add from (Cst 1)) to body ) env)
     (Left errorMessage)-> Left errorMessage
-evalLazy (Cst e) env = Right e 
+evalLazy (Cst e) _ = Right e 
 evalLazy (Add e1 e2) env= fmap' (+) (evalLazy e1 env)  (evalLazy e2 env)
 evalLazy (Sub e1 e2) env=  fmap' (-) (evalLazy e1 env)  (evalLazy e2 env)
 evalLazy (Mul e1 e2) env=  fmap' (*) (evalLazy e1 env )  (evalLazy e2 env)
 evalLazy (Pow e1 e2) env =
   case evalLazy e1 env of
     (Left errorMessage)->Left errorMessage
-    (Right n) ->
+    (Right _) ->
       case evalLazy e2 env of
         (Right n) -> if n<0 then Left ENegPower else  if n==0 then Right 1 else fmap' (^) (evalLazy e1 env)  (evalLazy e2 env)
         (Left errorMessage) -> Left errorMessage 
@@ -159,4 +166,4 @@ evalLazy (Div e1 e2) env =
       case evalLazy e2 env of 
       (Right 0) -> Left EDivZero
       (Right _)-> fmap' div  (evalLazy e1 env) ( evalLazy e2 env )
-      (Left errorMessage)-> Left e
+      (Left errorMessage)-> Left errorMessage
