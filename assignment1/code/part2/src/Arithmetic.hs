@@ -1,0 +1,162 @@
+-- This is a skeleton file for you to edit
+module Arithmetic
+  (
+  showExp,
+  evalSimple,
+  extendEnv,
+  evalFull,
+  evalErr,
+  showCompact,
+  evalEager,
+  evalLazy
+  )
+
+where
+
+import Definitions
+
+showExp :: Exp -> String
+showExp (Cst e) = if e <0  then "(" ++ show e ++ ")" else show e
+showExp (Add e1 e2) = "(" ++ showExp e1 ++ "+" ++ showExp e2 ++ ")"
+showExp (Sub e1 e2) = "(" ++ showExp e1 ++ "-" ++ showExp e2 ++ ")"
+showExp (Mul e1 e2) = "(" ++ showExp e1 ++ "*" ++ showExp e2 ++ ")"
+showExp (Div e1 e2) = "(" ++ showExp e1 ++ "`div`" ++ showExp e2 ++ ")"
+showExp (Pow e1 e2) = "(" ++ showExp e1 ++ "^" ++ showExp e2 ++ ")"
+showExp e = error $ "Operator Error! Which is"++ show e 
+
+evalSimple :: Exp -> Integer
+evalSimple (Cst e) = e
+evalSimple (Add e1 e2) = evalSimple e1 + evalSimple e2 
+evalSimple (Sub e1 e2) = evalSimple e1 - evalSimple e2  
+evalSimple (Mul e1 e2) = evalSimple e1 * evalSimple e2
+evalSimple (Pow e1 e2) 
+  |evalSimple e2 <0 = error "The exponent should be a Non-negative number"
+  |evalSimple e2 ==0 = 1
+  |otherwise = evalSimple e1 ^ evalSimple e2
+evalSimple (Div e1 e2) 
+  |evalSimple e2  == 0  = error "Error! A division by zero!"
+  |otherwise =evalSimple e1 `div` evalSimple e2 
+evalSimple _ =error "Can't match the type!"
+extendEnv :: VName -> Integer -> Env -> Env
+extendEnv v n r = \x -> if v==x then Just n else r x
+
+
+evalFull :: Exp -> Env -> Integer
+evalFull (If test yes no) env= if evalFull test env==0 then evalFull no env else evalFull yes env
+evalFull (Var vname) env=
+  case env vname  of 
+    Nothing-> error ("no currenr value for " ++ vname )
+    Just value -> value
+evalFull (Let var def body ) env = evalFull body (extendEnv var (evalFull def env) env)
+evalFull (Sum var from to body) env 
+  | evalFull from env > evalFull to env = 0
+  | otherwise = evalFull (Let var from body) env + evalFull (Sum var (Add from (Cst 1)) to body ) env
+evalFull (Cst e) _ = e 
+evalFull (Add e1 e2) env=  evalFull e1 env + evalFull e2 env
+evalFull (Sub e1 e2) env=  evalFull e1 env - evalFull e2 env
+evalFull (Mul e1 e2) env=  evalFull e1 env *  evalFull e2 env
+evalFull (Pow e1 e2) env
+  |evalFull e2 env <0 = error "The exponent should be a Non-negative number"
+  |evalFull e2 env == 0 =1
+  |otherwise =  evalFull e1 env ^  evalFull e2 env
+evalFull (Div e1 e2) env 
+  |evalFull e2 env == 0  = error "Error! A division by zero!"
+  |otherwise =evalFull e1 env `div` evalFull e2 env 
+
+fmap'::(Ord a)=>(Integer->Integer->a)->Either ArithError Integer -> Either ArithError Integer ->Either ArithError a
+fmap' f (Right r1) (Right r2) =Right (f r1 r2)
+fmap' _ (Left r1) _ = Left r1
+fmap' _  _ (Left r2)  =Left r2
+
+
+extendEnv' :: VName -> Either ArithError Integer -> Env -> Env
+extendEnv' v (Right n) r = \x -> if v==x then Just n else r x
+extendEnv' _ _ r = r
+
+evalErr :: Exp -> Env -> Either ArithError Integer
+evalErr (If test yes no) env =  
+  case fmap' (==) (evalErr test env) (Right 0) of 
+    (Right True) -> evalErr no env 
+    (Right False)-> evalErr yes env
+    (Left errorMessage)-> Left errorMessage
+evalErr (Var vname) env=
+  case env vname  of 
+    Nothing-> Left (EBadVar vname)
+    Just value -> Right value
+-- evalErr (Let var def body ) env = evalErr (If (Var var ) body (Var var )) (extendEnv' var (evalErr def env) env)
+evalErr (Let var def body ) env = 
+  case evalErr def env of
+    (Right value) ->  evalErr body (extendEnv var value env)
+    (Left errorMessage)-> Left errorMessage
+evalErr (Sum var from to body) env = 
+  case fmap' (>) (evalErr from env ) (evalErr to env) of
+    (Right True) ->  Right 0
+    (Right False)->  fmap' (+) (evalErr (Let var from body) env)  (evalErr (Sum var (Add from (Cst 1)) to body ) env)
+    (Left errorMessage)-> Left errorMessage
+evalErr (Cst e) _ = Right e 
+evalErr (Add e1 e2) env =  fmap' (+) (evalErr e1 env)  (evalErr e2 env)
+evalErr (Sub e1 e2) env =  fmap' (-) (evalErr e1 env)  (evalErr e2 env)
+evalErr (Mul e1 e2) env =  fmap' (*) (evalErr e1 env )  (evalErr e2 env)
+evalErr (Pow e1 e2) env =
+  case evalErr e1 env of
+    (Left errorMessage)->Left errorMessage
+    (Right n) ->
+      case evalErr e2 env of
+        (Right n) -> if n<0 then Left ENegPower else  if n==0 then Right 1 else fmap' (^) (evalErr e1 env)  (evalErr e2 env)
+        (Left errorMessage) -> Left errorMessage
+    
+evalErr (Div e1 e2) env =
+  case evalErr e1 env of 
+    (Left errorMessage)-> Left errorMessage
+    (Right _)->
+      case evalErr e2 env of 
+      (Right 0) -> Left EDivZero
+      (Right _)-> fmap' div  (evalErr e1 env) ( evalErr e2 env )
+      (Left errorMessage)-> Left errorMessage
+
+
+
+
+-- optional parts (if not attempted, leave them unmodified)
+
+showCompact :: Exp -> String
+showCompact=undefined
+
+evalEager :: Exp -> Env -> Either ArithError Integer
+evalEager =evalErr
+
+evalLazy :: Exp -> Env -> Either ArithError Integer
+evalLazy (If test yes no) env =  
+  case fmap' (==) (evalLazy test env) (Right 0) of 
+    (Right True) -> evalLazy no env 
+    (Right False)-> evalLazy yes env
+    (Left errorMessage)-> Left errorMessage
+evalLazy (Var vname) env=
+  case env vname  of 
+    Nothing-> Left (EBadVar vname)
+    Just value -> Right value
+evalLazy (Let var def body ) env = evalLazy body (extendEnv' var (evalLazy def env) env)
+evalLazy (Sum var from to body) env = 
+  case fmap' (>) (evalLazy from env ) (evalLazy to env) of
+    (Right True) ->  Right 0
+    (Right False)->  fmap' (+) (evalLazy (Let var from body) env)  (evalLazy (Sum var (Add from (Cst 1)) to body ) env)
+    (Left errorMessage)-> Left errorMessage
+evalLazy (Cst e) env = Right e 
+evalLazy (Add e1 e2) env= fmap' (+) (evalLazy e1 env)  (evalLazy e2 env)
+evalLazy (Sub e1 e2) env=  fmap' (-) (evalLazy e1 env)  (evalLazy e2 env)
+evalLazy (Mul e1 e2) env=  fmap' (*) (evalLazy e1 env )  (evalLazy e2 env)
+evalLazy (Pow e1 e2) env =
+  case evalLazy e1 env of
+    (Left errorMessage)->Left errorMessage
+    (Right n) ->
+      case evalLazy e2 env of
+        (Right n) -> if n<0 then Left ENegPower else  if n==0 then Right 1 else fmap' (^) (evalLazy e1 env)  (evalLazy e2 env)
+        (Left errorMessage) -> Left errorMessage 
+evalLazy (Div e1 e2) env =
+  case evalLazy e1 env of 
+    (Left errorMessage)-> Left errorMessage
+    (Right _)->
+      case evalLazy e2 env of 
+      (Right 0) -> Left EDivZero
+      (Right _)-> fmap' div  (evalLazy e1 env) ( evalLazy e2 env )
+      (Left errorMessage)-> Left e
