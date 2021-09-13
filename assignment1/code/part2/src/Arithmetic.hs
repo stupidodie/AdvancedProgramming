@@ -30,14 +30,18 @@ evalSimple (Add e1 e2) = evalSimple e1 + evalSimple e2
 evalSimple (Sub e1 e2) = evalSimple e1 - evalSimple e2  
 evalSimple (Mul e1 e2) = evalSimple e1 * evalSimple e2
 evalSimple (Pow e1 e2) 
-  |evalSimple e2 <0 = error "The exponent should be a Non-negative number"
-  |evalSimple e2 ==0 = 1
-  |otherwise = evalSimple e1 ^ evalSimple e2
+  | evalSimple e2 <0 = error "The exponent should be a Non-negative number" 
+  | (evalSimple e1 /=0) && (evalSimple e2 ==0)  = 1
+  | (evalSimple e1 ==0 ) && (evalSimple e2 ==0) = 1  
+  | (evalSimple e1 ==0 ) && (evalSimple e2 /=0) = 0 
+  | (evalSimple e1 /=0) && (evalSimple e2 /=0) = evalSimple e1 ^ evalSimple e2
+  | otherwise =error "Unknown Error!"
 evalSimple (Div e1 e2) 
-  |evalSimple e2  == 0  = error "Error! A division by zero!"
-  |otherwise =evalSimple e1 `div` evalSimple e2 
+  | evalSimple e2  == 0  = error "Error! A division by zero!"
+  | evalSimple e1 /=0 =evalSimple e1 `div` evalSimple e2 
+  | evalSimple e1 ==0 =evalSimple e1 `div` evalSimple e2 
+  | otherwise =error "Unknown Error!"
 evalSimple _ =error "Can't match the type!"
-
 
 extendEnv :: VName -> Integer -> Env -> Env
 extendEnv v n r = \x -> if v==x then Just n else r x
@@ -59,11 +63,16 @@ evalFull (Sub e1 e2) env=  evalFull e1 env - evalFull e2 env
 evalFull (Mul e1 e2) env=  evalFull e1 env *  evalFull e2 env
 evalFull (Pow e1 e2) env
   |evalFull e2 env <0 = error "The exponent should be a Non-negative number"
-  |evalFull e2 env == 0 =1
-  |otherwise =  evalFull e1 env ^  evalFull e2 env
+  |(evalFull e2 env == 0) && (evalFull e1 env ==0) = 1
+  |(evalFull e2 env /= 0) && (evalFull e1 env ==0) = 0
+  |(evalFull e2 env == 0) && (evalFull e1 env /=0) = 1
+  |(evalFull e2 env /= 0) && (evalFull e1 env /=0) = evalFull e1 env ^  evalFull e2 env
+  |otherwise = error "Unknown Error!"
 evalFull (Div e1 e2) env 
   |evalFull e2 env == 0  = error "Error! A division by zero!"
-  |otherwise =evalFull e1 env `div` evalFull e2 env 
+  |(evalFull e2 env /= 0) &&(evalFull e1 env ==0) = 0
+  |(evalFull e2 env /= 0) &&(evalFull e1 env /=0) =evalFull e1 env `div` evalFull e2 env 
+  |otherwise = error "Unknown Error!"
 
 -- fmap' is a Higher Order function which takes a function 
 -- as argument and to apply on the Either Type when it 
@@ -114,12 +123,42 @@ evalErr (Div e1 e2) env = --For the Div part, first check the if e1 has error, i
       (Left errorMessage)-> Left errorMessage
 
 -- optional parts (if not attempted, leave them unmodified)
+showPriority:: Exp  -> Int
+showPriority (Cst n) = if n <0 then 5 else 0
+showPriority (Add _ _)=1
+showPriority (Sub _ _)=1
+showPriority (Mul _ _)=2
+showPriority (Div _ _)=3
+showPriority (Pow _ _)=4
+showPriority errorMessage = error $show  errorMessage
 
 showCompact :: Exp -> String
-showCompact=undefined
+showCompact (Cst e) = show e
+showCompact (Add e1 e2) = if showPriority e2 >= 1 
+  then showCompact e1 ++ "+" ++ "(" ++ showCompact e2++")" 
+  else showCompact e1 ++ "+" ++ showCompact e2
+showCompact (Sub e1 e2) = if showPriority e2 >= 1 
+  then showCompact e1 ++ "-"++ "(" ++ showCompact e2 ++ ")" 
+  else showCompact e1 ++ "-" ++showCompact e2
+showCompact (Mul e1 e2)  
+  | showPriority e2 >= 2  && (showPriority e1 >=2 && showPriority e1 /= 5|| showPriority e1 ==0 ) = showCompact e1 ++ "*" ++ "(" ++ showCompact e2 ++")" 
+  | showPriority e2 >=2 && ((showPriority e1 <2   && showPriority e1 /=0)|| showPriority e1 ==5) = "(" ++ showCompact e1 ++ ")" ++ "*" ++ "(" ++showCompact e2 ++")"
+  | showPriority e2 <2  && ((showPriority e1 <2   && showPriority e1 /=0)||showPriority e1 ==5)  = "(" ++ showCompact e1 ++ ")" ++ "*" ++ showCompact e2 
+  | otherwise =showCompact e1  ++ "*" ++showCompact e2 
+showCompact (Div e1 e2)  
+  | showPriority e2 >= 3 && ( showPriority e1 >=2 && showPriority e1 /= 5 || showPriority e1 ==0)= showCompact e1 ++ "`div`" ++ "(" ++ showCompact e2 ++")" 
+  | showPriority e2 >=3 && ( (showPriority e1 <2   && showPriority e1/=0) || showPriority e1 ==5)   = "(" ++ showCompact e1 ++ ")" ++ "`div`" ++ "(" ++showCompact e2 ++")"
+  | showPriority e2 <3 && ((showPriority e1 <2   && showPriority e1/=0) || showPriority e1 ==5)  = "(" ++ showCompact e1 ++ ")" ++ "`div`" ++ showCompact e2 
+  | otherwise =showCompact e1  ++ "`div`" ++showCompact e2 
+showCompact (Pow e1 e2) 
+  | showPriority e2 > 4 && (showPriority e1 >4 && showPriority e1 /= 5 || showPriority e1 ==0) = showCompact e1 ++ "^" ++ "(" ++ showCompact e2 ++")" 
+  | showPriority e2 <4 && (showPriority e1 <4 && showPriority e1/=0) || showPriority e1 ==5  = "(" ++ showCompact e1 ++ ")" ++ "^" ++ "(" ++showCompact e2 ++")"
+  | showPriority e1 == 4  = "(" ++ showCompact e1 ++ ")" ++ "^"  ++showCompact e2 
+  | otherwise = showCompact e1  ++ "^"  ++showCompact e2 
+showCompact errorMessage =error $ show errorMessage
 
 evalEager :: Exp -> Env -> Either ArithError Integer
-evalEager =evalErr
+evalEager = evalErr
 
 -- The function extendEnv' function unlike the extendEnv function,
 --  it takes the Either ArithError Integer type as an argument rather than 
@@ -166,4 +205,4 @@ evalLazy (Div e1 e2) env =
       case evalLazy e2 env of 
       (Right 0) -> Left EDivZero
       (Right _)-> fmap' div  (evalLazy e1 env) ( evalLazy e2 env )
-      (Left errorMessage)-> Left errorMessage
+      (Left errorMessage)-> Left errorMessage                              
