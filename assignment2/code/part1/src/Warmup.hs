@@ -11,10 +11,12 @@ type StateData = Double
 newtype RWSP a = RWSP {runRWSP :: ReadData -> StateData ->
                                     (a, WriteData, StateData)}
 
--- complete the definitions
+
 instance Monad RWSP where
-  return a = undefined
-  m >>= f = undefined
+  return a = RWSP $ \_ s -> (a,mempty,s)
+  m >>= f = RWSP $ \r s -> let  (a,w,s') = runRWSP  m  r s 
+                                (a',w',s'') = runRWSP (f a) r s' 
+                                in  (a', w `mappend` w', s'') 
 
 -- No need to touch these
 instance Functor RWSP where
@@ -28,19 +30,19 @@ askP = RWSP (\r s -> (r, mempty, s))  -- freebie
 
 -- runs computation with new read data
 withP :: ReadData -> RWSP a -> RWSP a
-withP r' m = undefined
+withP r' m = RWSP $ \_ s -> runRWSP m r' s 
 
 -- adds some write data to accumulator
 tellP :: WriteData -> RWSP ()
-tellP w = undefined
+tellP w = RWSP $ \_ s-> ((),w,s) 
 
 -- returns current state data
 getP :: RWSP StateData
-getP = undefined
+getP = RWSP $ \_ s ->(s,mempty,s)
 
 -- overwrites the state data
 putP :: StateData -> RWSP ()
-putP s' = undefined
+putP s' = RWSP $ \_ _ ->((),mempty,s') 
 
 -- sample computation using all features
 type Answer = String
@@ -53,7 +55,8 @@ sampleP =
      putP (s1 + 1.0)
      tellP "world!"
      return $ "r1 = " ++ show r1 ++ ", r2 = " ++ show r2 ++ ", s1 = " ++ show s1
-
+-- askP >>=  \r1 -> withP 5 askP >>= \r2 -> tellP "Hello"  >>= getP >>= \s1-> putP(s1+1.0) >>= tellP "world!"
+-- (4,mempty,3.5)  (5 mempty 3.5) (5,"Hello,",3.5) (5,"Hello,",4.5)   (5,"Hello,world!",4.5)
 type Result = (Answer, WriteData, StateData)
 
 expected :: Result
@@ -68,8 +71,12 @@ newtype RWSE a = RWSE {runRWSE :: ReadData -> StateData ->
 
 -- Hint: here you may want to exploit that "Either ErrorData" is itself a monad
 instance Monad RWSE where
-  return a = undefined
-  m >>= f = undefined
+  return a = RWSE $ \_ s -> Right (a,mempty,s)
+  -- By exploit that "Either ErrorData" is itself a monad, that it can handle the error 
+  m >>= f = RWSE $ \r s-> do 
+    (a,w,s')<- runRWSE m r s
+    (a',w',s'')<-runRWSE (f a) r s'
+    return (a',w`mappend`w',s'')
 
 instance Functor RWSE where
   fmap = liftM
@@ -77,22 +84,22 @@ instance Applicative RWSE where
   pure = return; (<*>) = ap
 
 askE :: RWSE ReadData
-askE = undefined
+askE = RWSE $ \r s -> Right (r,mempty,s)
 
 withE :: ReadData -> RWSE a -> RWSE a
-withE r' m = undefined
+withE r' m = RWSE $ \_ s-> runRWSE m r' s
 
 tellE :: WriteData -> RWSE ()
-tellE w = undefined
+tellE w = RWSE $ \_ s-> Right ((),w,s)
 
 getE :: RWSE StateData
-getE = undefined
+getE = RWSE $ \_ s-> Right (s,mempty,s)
 
 putE :: StateData -> RWSE ()
-putE s' = undefined
+putE s' = RWSE $ \_ s-> Right ((),mempty,s')
 
 throwE :: ErrorData -> RWSE a
-throwE e = undefined
+throwE e = RWSE $ \ _ _ -> Left e
 
 sampleE :: RWSE Answer
 sampleE =
