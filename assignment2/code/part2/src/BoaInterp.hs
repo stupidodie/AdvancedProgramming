@@ -131,7 +131,7 @@ val2str v = case v of
   (ListVal l) -> case l of
     [] -> ""
     [x] -> "[" ++ val2str x ++ "]"
-    (x : xs) -> "[" ++ concatMap (\x -> if x /= ListVal [] then val2str x ++ ", " else "") (take (length l -1) l) ++ val2str (last l) ++ "]"
+    _ -> "[" ++ concatMap (\x -> if x /= ListVal [] then val2str x ++ ", " else "") (take (length l -1) l) ++ val2str (last l) ++ "]"
 
 vals2str :: [Value] -> String
 vals2str l = case l of
@@ -210,7 +210,7 @@ evalGeneral (Compr exp l) = case l of
     (CCIf e1) -> do
       e1' <- eval e1
       if truthy e1' then evalGeneral (Compr exp xs) else return (ListVal [])
-
+evalGeneral _=abort (EBadArg "Wrong")
 -- Main functions of interpreter
 eval :: Exp -> Comp Value
 eval (Const v) = return v
@@ -234,7 +234,7 @@ eval (List exp) = case exp of
   (_ : _) -> do
     s <- mapM eval exp
     return (ListVal s)
-eval (Compr exp l@((CCFor v1 e1) : xs)) = evalGeneral (Compr exp l)
+eval (Compr exp l@((CCFor _ _):_)) = evalGeneral (Compr exp l)
 eval (Compr _ _) = abort (EBadArg "Call Comp argument wrong type!")
 
 exec' :: Program -> Comp Value
