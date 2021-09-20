@@ -131,11 +131,11 @@ val2str v = case v of
   (ListVal l) -> case l of
     [] -> "[]"
     [x] -> "[" ++ val2str x ++ "]"
-    (x : xs) -> "[" ++ concatMap (\x -> if x /= ListVal [] then val2str x ++ ", " else "") (take (length l -1) l) ++ val2str (last l) ++ "]"
+    _ -> "[" ++ concatMap (\x -> if x /= ListVal [] then val2str x ++ ", " else "") (take (length l -1) l) ++ val2str (last l) ++ "]"
 
 vals2str :: [Value] -> String
 vals2str l = case l of
-  [] -> "[]"
+  [] -> ""
   [x] -> val2str x
   (x : xs) -> val2str x ++ " " ++ vals2str xs
 
@@ -186,14 +186,18 @@ apply f _ = abort (EBadFun f)
 evalGeneral :: Exp -> Comp Value
 -- Take the argument that Compr exp [CClause] and no restriction for the [CClause]
 evalGeneral (Compr exp l) = case l of
-  [] -> return (ListVal [])
+  [] -> do
+    e' <- eval exp
+    return (ListVal [e'])
   [x] -> case x of
     (CCFor v1 e1) -> do
       e1' <- eval e1
       case e1' of
-        (ListVal l1) -> do
-          s1 <- mapM (\x -> withBinding v1 x (eval exp)) l1
-          return (ListVal s1)
+        (ListVal l1) -> case l1 of
+          [] -> return (ListVal [])
+          _ -> do
+            s1 <- mapM (\x -> withBinding v1 x (eval exp)) l1
+            return (ListVal s1)
         _ -> abort (EBadArg "Return Exp in CCFOr is not a List")
     (CCIf e1) -> do
       e1' <- eval e1
@@ -206,13 +210,16 @@ evalGeneral (Compr exp l) = case l of
     (CCFor v1 e1) -> do
       e1' <- eval e1
       case e1' of
-        (ListVal l1) -> do
-          s1 <- mapM (\x -> withBinding v1 x (evalGeneral (Compr exp xs))) l1
-          return (ListVal (concatMap (\(ListVal v2) -> v2) s1))
+        (ListVal l1) -> case l1 of
+          [] -> return (ListVal [])
+          _ -> do
+            s1 <- mapM (\x -> withBinding v1 x (evalGeneral (Compr exp xs))) l1
+            return (ListVal (concatMap (\(ListVal v2) -> v2) s1))
         _ -> abort (EBadArg "Return Exp in CCFOr is not a List")
     (CCIf e1) -> do
       e1' <- eval e1
       if truthy e1' then evalGeneral (Compr exp xs) else return (ListVal [])
+evalGeneral _ = abort (EBadArg "Wrong type for evalGeneral")
 
 -- Main functions of interpreter
 eval :: Exp -> Comp Value
@@ -237,8 +244,13 @@ eval (List exp) = case exp of
   (_ : _) -> do
     s <- mapM eval exp
     return (ListVal s)
-eval (Compr exp l@((CCFor v1 e1) : xs)) = evalGeneral (Compr exp l)
-eval (Compr _ _) = abort (EBadArg "Call Comp argument wrong type!")
+-- The old eval version for (Compr exp l@((CCFor _ _) : _))
+-- eval (Compr exp l@((CCFor _ _) : _)) = evalGeneral (Compr exp l)
+-- Due To the Online TA, it seems that there
+-- is no need to ensure the first element in CCluase is CCFor
+eval (Compr exp l) = evalGeneral (Compr exp l)
+
+-- eval (Compr _ _) = abort (EBadArg "Call Comp argument wrong type!")
 
 exec' :: Program -> Comp Value
 exec' l = case l of
