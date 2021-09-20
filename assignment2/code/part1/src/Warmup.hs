@@ -96,7 +96,7 @@ getE :: RWSE StateData
 getE = RWSE $ \_ s-> Right (s,mempty,s)
 
 putE :: StateData -> RWSE ()
-putE s' = RWSE $ \_ s-> Right ((),mempty,s')
+putE s' = RWSE $ \_ _-> Right ((),mempty,s')
 
 throwE :: ErrorData -> RWSE a
 throwE e = RWSE $ \ _ _ -> Left e

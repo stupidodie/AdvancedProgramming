@@ -129,13 +129,13 @@ val2str v = case v of
   (IntVal x) -> show x
   (StringVal s) -> s
   (ListVal l) -> case l of
-    [] -> ""
+    [] -> "[]"
     [x] -> "[" ++ val2str x ++ "]"
-    _ -> "[" ++ concatMap (\x -> if x /= ListVal [] then val2str x ++ ", " else "") (take (length l -1) l) ++ val2str (last l) ++ "]"
+    (x : xs) -> "[" ++ concatMap (\x -> if x /= ListVal [] then val2str x ++ ", " else "") (take (length l -1) l) ++ val2str (last l) ++ "]"
 
 vals2str :: [Value] -> String
 vals2str l = case l of
-  [] -> ""
+  [] -> "[]"
   [x] -> val2str x
   (x : xs) -> val2str x ++ " " ++ vals2str xs
 
@@ -154,7 +154,10 @@ apply "range" l = case length l of
         else
           if ((n1 >= n2) && (n3 > 0)) || ((n1 <= n2) && (n3 < 0))
             then return (ListVal [])
-            else return (ListVal $ map IntVal $ filter (\x -> ((x - n1) `mod` n3 == 0) && x /= n2) [n1 .. n2])
+            else
+              if n1 <= n2
+                then return (ListVal $ map IntVal $ filter (\x -> ((x - n1) `mod` n3 == 0) && x /= n2) [n1 .. n2])
+                else return (ListVal $ map IntVal $ reverse $ filter (\x -> ((x - n2) `mod` n3 == 0) && x /= n2) [n2 .. n1])
     _ -> abort (EBadArg "Arguments Type not match")
   _ -> abort (EBadArg "The argument numbers is wrong")
 -- TODO: The String formatted
@@ -210,7 +213,7 @@ evalGeneral (Compr exp l) = case l of
     (CCIf e1) -> do
       e1' <- eval e1
       if truthy e1' then evalGeneral (Compr exp xs) else return (ListVal [])
-evalGeneral _=abort (EBadArg "Wrong")
+
 -- Main functions of interpreter
 eval :: Exp -> Comp Value
 eval (Const v) = return v
@@ -234,7 +237,7 @@ eval (List exp) = case exp of
   (_ : _) -> do
     s <- mapM eval exp
     return (ListVal s)
-eval (Compr exp l@((CCFor _ _):_)) = evalGeneral (Compr exp l)
+eval (Compr exp l@((CCFor v1 e1) : xs)) = evalGeneral (Compr exp l)
 eval (Compr _ _) = abort (EBadArg "Call Comp argument wrong type!")
 
 exec' :: Program -> Comp Value
