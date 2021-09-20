@@ -32,7 +32,7 @@ instance Monad Comp where
   c >>= f = Comp $ \env -> case runComp c env of
     (Left runError, s) -> (Left runError, s)
     (Right a, s) -> case runComp (f a) env of
-      (Left runError, s') -> (Left runError, s')
+      (Left runError, s') -> (Left runError, s `mappend` s')
       (Right a', s') -> (Right a', s `mappend` s')
 
 -- You shouldn't need to modify these
@@ -108,8 +108,36 @@ operate op v1 v2 = case op of
       _ -> Left $ "Wrong input Value " ++ show v2
     _ -> Left $ "Wrong input Value " ++ show v1
   In -> case v2 of
-    (ListVal l) -> if v1 `elem` l then Right TrueVal else Right FalseVal
+    (ListVal l) -> case l of
+      [] -> Right FalseVal
+      [x] -> case x of
+        (ListVal _) -> operate op v1 x
+        _ -> operate Eq x v1
+      (x : xs) -> case x of
+        (ListVal _) -> do
+          v1 <- operate op v1 x
+          v2 <- operate op v1 (ListVal xs)
+          if v1 == TrueVal || v2 == TrueVal then Right TrueVal else Right FalseVal
+        _ -> if v1 `elem` l then Right TrueVal else Right FalseVal
     _ -> Left "The v2 is not a List"
+
+val2str :: Value -> String
+val2str v = case v of
+  NoneVal -> "None"
+  TrueVal -> "True"
+  FalseVal -> "False"
+  (IntVal x) -> show x
+  (StringVal s) -> s
+  (ListVal l) -> case l of
+    [] -> ""
+    [x] -> "[" ++ val2str x ++ "]"
+    (x : xs) -> "[" ++ concatMap (\x -> if x /= ListVal [] then val2str x ++ ", " else "") (take (length l -1) l) ++ val2str (last l) ++ "]"
+
+vals2str :: [Value] -> String
+vals2str l = case l of
+  [] -> ""
+  [x] -> val2str x
+  (x : xs) -> val2str x ++ " " ++ vals2str xs
 
 apply :: FName -> [Value] -> Comp Value
 apply "range" l = case length l of
@@ -130,91 +158,109 @@ apply "range" l = case length l of
     _ -> abort (EBadArg "Arguments Type not match")
   _ -> abort (EBadArg "The argument numbers is wrong")
 -- TODO: The String formatted
-apply "print" l = case l of
-  [] -> return NoneVal
-  [x] -> case x of
-    NoneVal -> do
-      output "None"
-      apply "print" []
-    TrueVal -> do
-      output "True"
-      apply "print" []
-    FalseVal -> do
-      output "True"
-      apply "print" []
-    (IntVal x) -> do
-      output $ show x
-      apply "print" []
-    (StringVal s) -> do
-      output s
-      apply "print" []
-    (ListVal l) -> case l of
-      [] -> do
-        output "[]"
-        apply "print" []
-      [_] -> do
-        output "["
-        apply "print" l
-        output "]"
-        apply "print" []
-      (_ : _) -> do
-        output "["
-        head $ fmap (\x -> apply "print" [x] >>= (\_ -> apply "print" [StringVal ", "])) (take (length l -1) l)
-        apply "print" [last l]
-        output "]"
-        apply "print" []
-  (x : xs) -> case x of
-    NoneVal -> do
-      output "None "
-      apply "print" xs
-    TrueVal -> do
-      output "True "
-      apply "print" xs
-    FalseVal -> do
-      output "False "
-      apply "print" xs
-    (IntVal x) -> do
-      output (show x ++ " ")
-      apply "print" xs
-    (StringVal s) -> do
-      output (s ++ " ")
-      apply "print" xs
-    (ListVal l) -> case l of
-      [] -> do
-        output "[] "
-        apply "print" xs
-      [_] -> do
-        output "["
-        apply "print" l
-        output "] "
-        apply "print" xs
-      (_ : _) -> do
-        output "["
-        head $ fmap (\x -> apply "print" [x] >>= (\_ -> apply "print" [StringVal ", "])) (take (length l -1) l)
-        apply "print" [last l]
-        output "] "
-        apply "print" xs
+-- Have tried the use the function apply, but not work,
+--  so use the function val2str and vals2str
+apply "print" l = do
+  output (vals2str l)
+  return NoneVal
 apply f _ = abort (EBadFun f)
+
+-- evalOneCC :: Exp -> Comp Value
+-- evalOneCC (Compr exp [CCFor v1 e1]) = do
+--   e1' <- eval e1
+--   case e1' of
+--     (ListVal l) -> do
+--       s1 <- sequence (fmap (\x -> withBinding v1 x (eval exp)) l)
+--       return (ListVal s1)
+--     _ -> abort (EBadArg "Return Exp in CCFOr is not a List")
+-- evalOneIf::Exp -> Comp Value
+-- evalOneIf (Compr exp [CCIf e1]) = do
+--   e1' <- eval e1
+--   case truthy e1' of
+--       True-> -- GO NEXT
+--       False->return NoneVal
+
+evalGeneral :: Exp -> Comp Value
+-- Take the argument that Compr exp [CClause] and no restriction for the [CClause]
+evalGeneral (Compr exp l) = case l of
+  [] -> return (ListVal [])
+  [x] -> case x of
+    (CCFor v1 e1) -> do
+      e1' <- eval e1
+      case e1' of
+        (ListVal l1) -> do
+          s1 <- mapM (\x -> withBinding v1 x (eval exp)) l1
+          return (ListVal s1)
+        _ -> abort (EBadArg "Return Exp in CCFOr is not a List")
+    (CCIf e1) -> do
+      e1' <- eval e1
+      if truthy e1'
+        then do
+          e' <- eval exp
+          return (ListVal [e'])
+        else return (ListVal [])
+  (x : xs) -> case x of
+    (CCFor v1 e1) -> do
+      e1' <- eval e1
+      case e1' of
+        (ListVal l1) -> do
+          s1 <- mapM (\x -> withBinding v1 x (evalGeneral (Compr exp xs))) l1
+          return (ListVal (concatMap (\(ListVal v2) -> v2) s1))
+        _ -> abort (EBadArg "Return Exp in CCFOr is not a List")
+    (CCIf e1) -> do
+      e1' <- eval e1
+      if truthy e1' then evalGeneral (Compr exp xs) else return (ListVal [])
 
 -- Main functions of interpreter
 eval :: Exp -> Comp Value
 eval (Const v) = return v
 eval (Var vname) = look vname
 eval (Oper op e1 e2) = do
-  return (operate op)
-  eval e1
-  eval e2
+  v1 <- eval e1
+  v2 <- eval e2
+  case operate op v1 v2 of
+    (Right v) -> return v
+    (Left err) -> abort (EBadArg err)
 eval (Not e1) = do
   s <- eval e1
-  return (if truthy s == True then FalseVal else TrueVal)
+  if truthy s then return FalseVal else return TrueVal
 eval (Call f exp) = case exp of
   [] -> apply f []
-  (x : xs) -> do
-    x1<-eval x
-    eval (Call f xs)
-  
+  _ -> do
+    s <- mapM eval exp
+    apply f s
+eval (List exp) = case exp of
+  [] -> return (ListVal [])
+  (_ : _) -> do
+    s <- mapM eval exp
+    return (ListVal s)
+eval (Compr exp l@((CCFor v1 e1) : xs)) = evalGeneral (Compr exp l)
+eval (Compr _ _) = abort (EBadArg "Call Comp argument wrong type!")
+
+exec' :: Program -> Comp Value
+exec' l = case l of
+  [] -> return NoneVal
+  [x] -> case x of
+    (SDef v e) -> do
+      e' <- eval e
+      withBinding v e' (exec' [])
+    (SExp e) -> do
+      eval e
+      exec' []
+  (x : xs) -> case x of
+    (SDef v e) -> do
+      e' <- eval e
+      withBinding v e' (exec' xs)
+    (SExp e) -> do
+      eval e
+      exec' xs
+
 exec :: Program -> Comp ()
-exec = undefined
+exec l = do
+  exec' l
+  return ()
 
 execute :: Program -> ([String], Maybe RunError)
-execute = undefined
+execute l = case runComp (exec l) [] of
+  (Left e, s) -> (s, Just e)
+  (_, s) -> (s, Nothing)
