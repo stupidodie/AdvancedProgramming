@@ -23,6 +23,8 @@ import Text.ParserCombinators.Parsec
     try,
     unexpected,
     (<|>),
+    manyTill,
+    anyChar 
   )
 
 -- add any other other imports you need
@@ -68,15 +70,15 @@ stmt =
 -- Left factoring: Op2: +, -
 -- None factoring: Op3: ==, !=, <, <=, >, >=
 -- Left factoring: Op4: in, not in,
--- Thus we change the grammar in the Expr Oper Expr
+-- Thus we rewrite the grammar in the Expr Oper Expr
 -- Exp=E1 E2
 -- E2= Op4 E1 E2|eps
--- E1=E3Op3E3|E3
--- E3=E4E5
--- E5=Op2E4E5|eps
--- E4=E6E7
--- E7=Op1E6E7|eps
--- E6=Others Exp
+-- E1=E3 Op3 E3|E3
+-- E3=E4 E5
+-- E5=Op2 E4 E5|eps
+-- E4=E6 E7
+-- E7=Op1 E6 E7|eps
+-- E6=Others kinds of Exp
 expParse :: Parser Exp
 expParse = do
   e1 <- exp1
@@ -338,5 +340,13 @@ stringConst = do
   s <- many $satisfy (\x -> isPrint x || (x == '\n') || (x /= '\''))
   string "'"
   return (Const (StringVal s))
+-- TODO:Where to use the comment function?
+comment::Parser ()
+comment=do
+  string "#"
+  manyTill anyChar (try (string "\n"))
+  return ()
+  
 
-main = print (parseString "squares = [x*x for x in range(10)];print([123, [squares, print(321)]]);print('Odd squares:', [x for x in squares if x % 2 == 1]);n = 5;composites = [j for i in range(2, n) for j in range(i*2, n*n, i)];print('Printing all primes below', n*n);[print(x) for x in range(2,n*n) if x not in composites]")
+
+-- main = 
