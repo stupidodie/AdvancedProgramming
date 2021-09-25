@@ -10,6 +10,7 @@ import BoaAST
     Stmt (..),
     Value (FalseVal, IntVal, NoneVal, StringVal, TrueVal),
   )
+-- import Debug.Trace
 import Data.Char (isLetter, isNumber, isPrint)
 import Text.ParserCombinators.Parsec
   ( ParseError,
@@ -24,7 +25,7 @@ import Text.ParserCombinators.Parsec
     unexpected,
     (<|>),
     manyTill,
-    anyChar 
+    anyChar
   )
 
 -- add any other other imports you need
@@ -69,86 +70,118 @@ stmt =
 -- Left factoring: Op1: %, *, //
 -- Left factoring: Op2: +, -
 -- None factoring: Op3: ==, !=, <, <=, >, >=
--- Left factoring: Op4: in, not in,
+-- None factoring: Op4: in, not in,
 -- Thus we rewrite the grammar in the Expr Oper Expr
--- Exp=E1 E2
--- E2= Op4 E1 E2|eps
--- E1=E3 Op3 E3|E3
--- E3=E4 E5
--- E5=Op2 E4 E5|eps
--- E4=E6 E7
--- E7=Op1 E6 E7|eps
--- E6=Others kinds of Exp
+-- Exp  = Exp1 Op4 Exp1 | Exp1
+-- Exp1 = Exp2 Op3 Exp2 | Exp2
+-- Exp2 = Exp4 Exp3
+-- Exp3 = Op2 Exp4 Exp3| eps
+-- Exp4 = Exp6 Exp5
+-- Exp5 = Op1 Exp6 Exp5| eps
+-- Exp6 = Value
 expParse :: Parser Exp
-expParse = do
-  e1 <- exp1
-  e2 <- exp2
-  case e2 of
-    Nothing -> return e1
-    Just e -> return (e e1)
-
-exp2 :: Parser (Maybe (Exp -> Exp))
-exp2 =
-  do
-    symbol "in"
-    e1 <- exp1
-    e2 <- exp2
-    case e2 of
-      Nothing -> return (Just (\e -> Oper In e e1))
-      Just e -> return (Just (\e' -> e (Oper In e' e1)))
-    <|> do
-      symbol "not"
+expParse = try
+  (do 
+      spaces
+      e1<- exp1
       symbol "in"
-      e1 <- exp1
-      e2 <- exp2
-      case e2 of
-        Nothing -> return (Just (\e -> Not (Oper In e e1)))
-        Just e -> return (Just (\e' -> e (Not (Oper In e' e1))))
-    <|> return Nothing
+      Oper In e1 <$> exp1
+  )
+  <|> try
+    (
+      do
+        spaces
+        e1<- exp1
+        symbol "not"
+        symbol "in"
+        Not . Oper In e1 <$> exp1
+    )
+    <|>exp1
+
 
 exp1 :: Parser Exp
 exp1 =
   try
     ( do
-        e1 <- exp3
+        spaces
+        e1 <- exp2
         symbol "=="
-        Oper Eq e1 <$> exp3
+        Oper Eq e1 <$> exp2
     )
     <|> try
       ( do
-          e1 <- exp3
+          spaces
+          e1 <- exp2
           symbol "!="
-          Not . Oper Eq e1 <$> exp3
+          Not . Oper Eq e1 <$> exp2
       )
     <|> try
       ( do
-          e1 <- exp3
+          spaces
+          e1 <- exp2
           symbol "<"
-          Oper Less e1 <$> exp3
+          Oper Less e1 <$> exp2
       )
     <|> try
       ( do
-          e1 <- exp3
+          spaces
+          e1 <- exp2
           symbol ">"
-          Oper Greater e1 <$> exp3
+          Oper Greater e1 <$> exp2
       )
     <|> try
       ( do
-          e1 <- exp3
+          spaces
+          e1 <- exp2
           symbol "<="
-          Not . Oper Greater e1 <$> exp3
+          Not . Oper Greater e1 <$> exp2
       )
     <|> try
       ( do
-          e1 <- exp3
+          spaces
+          e1 <- exp2
           symbol ">="
-          Not . Oper Less e1 <$> exp3
+          Not . Oper Less e1 <$> exp2
       )
-    <|> exp3
+    <|> try (do 
+      spaces
+      exp2
+      )
 
-exp3 :: Parser Exp
-exp3 = do
+exp2 :: Parser Exp
+exp2 = do
+  spaces 
   e1 <- exp4
+  spaces 
+  e2 <- exp3
+  case e2 of
+    Nothing -> return e1
+    Just e -> return (e e1)
+
+exp3 :: Parser (Maybe (Exp -> Exp))
+exp3 =
+  do
+    symbol "+"
+    e1 <- exp4
+    spaces 
+    e2 <- exp3
+    case e2 of
+      Nothing -> return (Just (\e -> Oper Plus e e1))
+      Just e -> return (Just (\e' -> e (Oper Plus e' e1)))
+  <|> do
+      symbol "-"
+      e1 <- exp4
+      spaces 
+      e2 <- exp3
+      case e2 of
+        Nothing -> return (Just (\e -> Oper Minus e e1))
+        Just e -> return (Just (\e' -> e (Oper Minus e' e1)))
+  <|> return Nothing
+exp4 :: Parser Exp
+exp4 = do
+  spaces 
+  e1 <- exp6
+  spaces 
   e2 <- exp5
   case e2 of
     Nothing -> return e1
@@ -157,53 +190,32 @@ exp3 = do
 exp5 :: Parser (Maybe (Exp -> Exp))
 exp5 =
   do
-    symbol "+"
-    e1 <- exp4
-    e2 <- exp5
-    case e2 of
-      Nothing -> return (Just (\e -> Oper Plus e e1))
-      Just e -> return (Just (\e' -> e (Oper Plus e' e1)))
-    <|> do
-      symbol "-"
-      e1 <- exp4
-      e2 <- exp5
-      case e2 of
-        Nothing -> return (Just (\e -> Oper Minus e e1))
-        Just e -> return (Just (\e' -> e (Oper Minus e' e1)))
-    <|> return Nothing
-
-exp7 :: Parser (Maybe (Exp -> Exp))
-exp7 =
-  do
     symbol "%"
     e1 <- exp6
-    e2 <- exp7
+    spaces 
+    e2 <- exp5
     case e2 of
       Nothing -> return (Just (\e -> Oper Mod e e1))
       Just e -> return (Just (\e' -> e (Oper Mod e' e1)))
     <|> do
       symbol "//"
       e1 <- exp6
-      e2 <- exp7
+      spaces 
+      e2 <- exp5
       case e2 of
         Nothing -> return (Just (\e -> Oper Div e e1))
         Just e -> return (Just (\e' -> e (Oper Div e' e1)))
     <|> do
       symbol "*"
       e1 <- exp6
-      e2 <- exp7
+      spaces 
+      e2 <- exp5
       case e2 of
         Nothing -> return (Just (\e -> Oper Times e e1))
         Just e -> return (Just (\e' -> e (Oper Times e' e1)))
     <|> return Nothing
 
-exp4 :: Parser Exp
-exp4 = do
-  e1 <- exp6
-  e2 <- exp7
-  case e2 of
-    Nothing -> return e1
-    Just e -> return (e e1)
+
 
 exp6 :: Parser Exp
 exp6 = exprParser
@@ -232,13 +244,15 @@ exprParser =
     <|> do
       symbol "not"
       Not <$> expParse
-    <|> do
+    <|> try (do
       symbol "("
       e <- expParse
-      symbol "("
+      symbol ")"
       return e
-    <|> do
+    )
+    <|> try (
       Var <$> ident
+    )
     <|> try
       ( do
           symbol "["
@@ -246,13 +260,15 @@ exprParser =
           symbol "]"
           return (List e)
       )
-    <|> do
+    <|> try (
+      do
       symbol "["
       exp <- expParse
       forcc <- forClause
       l <- clausez
       symbol "]"
       return (Compr exp (forcc : l))
+    )
     <|> stringConst
 
 ifClause :: Parser CClause
@@ -264,6 +280,7 @@ forClause :: Parser CClause
 forClause = do
   symbol "for"
   vname <- ident
+  
   symbol "in"
   CCFor vname <$> expParse
 
@@ -273,11 +290,11 @@ clausez =
     forcc <- forClause
     listcc <- clausez
     return (forcc : listcc)
-    <|> do
+  <|> do
       ifcc <- ifClause
       listcc <- clausez
       return (ifcc : listcc)
-    <|> return []
+  <|> return []
 
 exprz :: Parser [Exp]
 exprz =
@@ -346,7 +363,10 @@ comment=do
   string "#"
   manyTill anyChar (try (string "\n"))
   return ()
-  
 
 
--- main = 
+
+main = do
+  -- print(parseString "2==1")
+  -- print(parseString "x % 2 == 1")
+  print( parseString "print([x for x in squares if x % 2 == 1])")
