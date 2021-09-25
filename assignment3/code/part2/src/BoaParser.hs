@@ -25,7 +25,8 @@ import Text.ParserCombinators.Parsec
     unexpected,
     (<|>),
     manyTill,
-    anyChar
+    anyChar,
+    eof
   )
 
 -- add any other other imports you need
@@ -36,7 +37,7 @@ import Text.ParserCombinators.Parsec
 -- type ParseError = String -- you may replace this
 
 parseString :: String -> Either ParseError Program
-parseString = runParser program () ""
+parseString = runParser (do e<-program; eof;return e) () "" 
 
 program :: Parser Program
 program = stmts
@@ -369,4 +370,4 @@ comment=do
 main = do
   -- print(parseString "2==1")
   -- print(parseString "x % 2 == 1")
-  print( parseString "print([x for x in squares if x % 2 == 1])")
+  -- print( parseString "print([x for x in squares if x % 2 == 1])")

@@ -20,14 +20,15 @@ import Text.ParserCombinators.Parsec
       many1,
       (<|>),
       Parser,
-      runParser ) -- exports a suitable type ParseError
+      runParser,
+      eof) -- exports a suitable type ParseError
 
 data Exp = Num Int | Negate Exp | Add Exp Exp
   deriving (Eq, Show)
 
 -- Optional: if not attempted, leave as undefined
 parseString :: String -> Either ParseError Exp
-parseString = runParser parserE () ""
+parseString = runParser (do e<-parserE; eof; return e) () ""
 
 parserE =
   do
