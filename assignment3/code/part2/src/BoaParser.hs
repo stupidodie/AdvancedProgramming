@@ -367,6 +367,7 @@ stringCheck = try (
 stringConst :: Parser Exp
 stringConst = do
   char '\''
+  comment
   s <- many stringCheck
   string "'"
   if concat s=="\n"
@@ -382,4 +383,4 @@ comment=try (
 lexeme :: Parser a -> Parser a
 lexeme x = do spaces; comment; a <- x; spaces; comment; return a
 
-main = print (parseString "x#foo")
+main = print (parseString  "'#foo\n'")
