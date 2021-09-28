@@ -236,7 +236,7 @@ exprParser =
     <|> try(
       do
       string "not"
-      skipMany1 space
+      skipMany1 space <|> try (do string "#"; skipMany (satisfy (/= '\n')); return ())
       Not <$> expParse
     )
     <|> try (do
@@ -383,4 +383,4 @@ comment=try (
 lexeme :: Parser a -> Parser a
 lexeme x = do spaces; comment; a <- x; spaces; comment; return a
 
-main = print (parseString  "'#foo\n'")
+main = print (parseString "notx")
