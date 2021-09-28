@@ -37,10 +37,10 @@ import Text.ParserCombinators.Parsec
 -- type ParseError = String -- you may replace this
 
 parseString :: String -> Either ParseError Program
-parseString = runParser (do e<-program; eof;return e) () "" 
+parseString = runParser (do e<-program; eof;return e) () ""
 
 program :: Parser Program
-program = stmts
+program =   lexeme stmts
 
 stmts :: Parser [Stmt]
 stmts =
@@ -56,7 +56,7 @@ stmts =
       return [s]
 
 stmt :: Parser Stmt
-stmt =
+stmt =lexeme $
   try
     ( do
         vname <- ident
@@ -81,9 +81,8 @@ stmt =
 -- Exp5 = Op1 Exp6 Exp5| eps
 -- Exp6 = Value
 expParse :: Parser Exp
-expParse = try
-  (do 
-      spaces
+expParse = lexeme $ try
+  (do
       e1<- exp1
       symbol "in"
       Oper In e1 <$> exp1
@@ -91,7 +90,6 @@ expParse = try
   <|> try
     (
       do
-        spaces
         e1<- exp1
         symbol "not"
         symbol "in"
@@ -101,70 +99,61 @@ expParse = try
 
 
 exp1 :: Parser Exp
-exp1 =
+exp1 =lexeme $
   try
     ( do
-        spaces
         e1 <- exp2
         symbol "=="
         Oper Eq e1 <$> exp2
     )
     <|> try
       ( do
-          spaces
           e1 <- exp2
           symbol "!="
           Not . Oper Eq e1 <$> exp2
       )
     <|> try
       ( do
-          spaces
           e1 <- exp2
           symbol "<"
           Oper Less e1 <$> exp2
       )
     <|> try
       ( do
-          spaces
           e1 <- exp2
           symbol ">"
           Oper Greater e1 <$> exp2
       )
     <|> try
       ( do
-          spaces
           e1 <- exp2
           symbol "<="
           Not . Oper Greater e1 <$> exp2
       )
     <|> try
       ( do
-          spaces
           e1 <- exp2
           symbol ">="
           Not . Oper Less e1 <$> exp2
       )
-    <|> try (do 
-      spaces
-      exp2
-      )
+    <|> try exp2
+
 
 exp2 :: Parser Exp
-exp2 = do
-  spaces 
+exp2 = lexeme $ do
   e1 <- exp4
-  spaces 
+  spaces
   e2 <- exp3
   case e2 of
     Nothing -> return e1
     Just e -> return (e e1)
 
 exp3 :: Parser (Maybe (Exp -> Exp))
-exp3 =
+exp3 =lexeme $
   do
     symbol "+"
     e1 <- exp4
-    spaces 
+    spaces
     e2 <- exp3
     case e2 of
       Nothing -> return (Just (\e -> Oper Plus e e1))
@@ -172,28 +161,27 @@ exp3 =
   <|> do
       symbol "-"
       e1 <- exp4
-      spaces 
+      spaces
       e2 <- exp3
       case e2 of
         Nothing -> return (Just (\e -> Oper Minus e e1))
         Just e -> return (Just (\e' -> e (Oper Minus e' e1)))
   <|> return Nothing
 exp4 :: Parser Exp
-exp4 = do
-  spaces 
+exp4 = lexeme $ do
   e1 <- exp6
-  spaces 
+  spaces
   e2 <- exp5
   case e2 of
     Nothing -> return e1
     Just e -> return (e e1)
 
 exp5 :: Parser (Maybe (Exp -> Exp))
-exp5 =
+exp5 =lexeme $
   do
     symbol "%"
     e1 <- exp6
-    spaces 
+    spaces
     e2 <- exp5
     case e2 of
       Nothing -> return (Just (\e -> Oper Mod e e1))
@@ -201,7 +189,7 @@ exp5 =
     <|> do
       symbol "//"
       e1 <- exp6
-      spaces 
+      spaces
       e2 <- exp5
       case e2 of
         Nothing -> return (Just (\e -> Oper Div e e1))
@@ -209,7 +197,7 @@ exp5 =
     <|> do
       symbol "*"
       e1 <- exp6
-      spaces 
+      spaces
       e2 <- exp5
       case e2 of
         Nothing -> return (Just (\e -> Oper Times e e1))
@@ -219,7 +207,7 @@ exp5 =
 
 
 exp6 :: Parser Exp
-exp6 = exprParser
+exp6 = lexeme exprParser
 
 exprParser :: Parser Exp
 exprParser =
@@ -281,7 +269,7 @@ forClause :: Parser CClause
 forClause = do
   symbol "for"
   vname <- ident
-  
+
   symbol "in"
   CCFor vname <$> expParse
 
@@ -316,16 +304,14 @@ exprs =
       return [exp]
 
 symbol :: String -> Parser ()
-symbol s = do
+symbol s = lexeme $ do
   string s
-  spaces
   return ()
 
 ident :: Parser String
-ident = do
+ident = lexeme $ do
   first <- satisfy (\x -> x == '_' || isLetter x)
   rest <- many $satisfy (\x -> x == '_' || isLetter x || isNumber x)
-  spaces
   ( \s ->
       if s `elem` ["None", "True", "False", "for", "if", "in", "not"]
         then unexpected $ "ident Name Crash: " ++ s
@@ -340,7 +326,7 @@ numConst =
         satisfy (== '-')
         numFirst <- digit
         numRest <- many digit
-        if numFirst == '0' && numRest /= []
+        if numFirst == '0' 
           then unexpected $ "illegal Number " ++ (numFirst : numRest)
           else return (Const (IntVal (-1 * (read :: String -> Int) (numFirst : numRest))))
     )
@@ -360,14 +346,13 @@ stringConst = do
   return (Const (StringVal s))
 -- TODO:Where to use the comment function?
 comment::Parser ()
-comment=do
-  string "#"
-  manyTill anyChar (try (string "\n"))
-  return ()
+comment=try (
+  do
+    string "#"
+    manyTill anyChar (try (string "\n"))
+    return ()
+  )<|> return ()
 
 
-
-main = do
-  -- print(parseString "2==1")
-  -- print(parseString "x % 2 == 1")
-  -- print( parseString "print([x for x in squares if x % 2 == 1])")
+lexeme :: Parser a -> Parser a
+lexeme x = do try spaces; a <- x; try spaces; comment; return a
