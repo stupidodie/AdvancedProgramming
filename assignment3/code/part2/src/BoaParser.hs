@@ -267,7 +267,8 @@ exprParser =
 
 ifClause :: Parser CClause
 ifClause = do
-  symbol "if"
+  string "if"
+  skipMany1 space
   CCIf <$> expParse
 
 forClause :: Parser CClause
@@ -378,5 +379,6 @@ comment=try (
     return ()
   )<|> return ()
 lexeme :: Parser a -> Parser a
-lexeme x = do try spaces; a <- x; try spaces; comment; return a
-main = print(parseString "notx")
+lexeme x = do spaces; comment; a <- x; spaces; comment; return a
+
+main = print (parseString "#foo#\n1#bar'\n")
