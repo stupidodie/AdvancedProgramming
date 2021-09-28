@@ -30,7 +30,8 @@ import Text.ParserCombinators.Parsec
     lookAhead,
     char,
     parseTest, skipMany1,
-    space
+    space,
+    anyToken, skipMany
   )
 
 -- add any other other imports you need
@@ -375,10 +376,10 @@ comment::Parser ()
 comment=try (
   do
     string "#"
-    manyTill anyChar (try (string "\n"))
+    skipMany (satisfy (/= '\n'))
     return ()
   )<|> return ()
 lexeme :: Parser a -> Parser a
 lexeme x = do spaces; comment; a <- x; spaces; comment; return a
 
-main = print (parseString "#foo#\n1#bar'\n")
+main = print (parseString "x#foo")
