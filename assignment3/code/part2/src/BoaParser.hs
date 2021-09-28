@@ -10,7 +10,7 @@ import BoaAST
     Stmt (..),
     Value (FalseVal, IntVal, NoneVal, StringVal, TrueVal),
   )
--- import Debug.Trace
+import Debug.Trace
 import Data.Char (isLetter, isNumber, isPrint)
 import Text.ParserCombinators.Parsec
   ( ParseError,
@@ -26,7 +26,10 @@ import Text.ParserCombinators.Parsec
     (<|>),
     manyTill,
     anyChar,
-    eof
+    eof,
+    lookAhead,
+    char,
+    parseTest 
   )
 
 -- add any other other imports you need
@@ -97,7 +100,6 @@ expParse = lexeme $ try
     )
     <|>exp1
 
-
 exp1 :: Parser Exp
 exp1 =lexeme $
   try
@@ -137,8 +139,6 @@ exp1 =lexeme $
           Not . Oper Less e1 <$> exp2
       )
     <|> try exp2
-
-
 exp2 :: Parser Exp
 exp2 = lexeme $ do
   e1 <- exp4
@@ -175,7 +175,6 @@ exp4 = lexeme $ do
   case e2 of
     Nothing -> return e1
     Just e -> return (e e1)
-
 exp5 :: Parser (Maybe (Exp -> Exp))
 exp5 =lexeme $
   do
@@ -203,8 +202,6 @@ exp5 =lexeme $
         Nothing -> return (Just (\e -> Oper Times e e1))
         Just e -> return (Just (\e' -> e (Oper Times e' e1)))
     <|> return Nothing
-
-
 
 exp6 :: Parser Exp
 exp6 = lexeme exprParser
@@ -326,7 +323,7 @@ numConst =
         satisfy (== '-')
         numFirst <- digit
         numRest <- many digit
-        if numFirst == '0' 
+        if numFirst == '0'
           then unexpected $ "illegal Number " ++ (numFirst : numRest)
           else return (Const (IntVal (-1 * (read :: String -> Int) (numFirst : numRest))))
     )
@@ -338,13 +335,31 @@ numConst =
         else return (Const (IntVal ((read :: String -> Int) (numFirst : numRest))))
 
 -- TODO:Need to handle the String
+stringCheck:: Parser String
+stringCheck = try (
+    do
+      a <- satisfy (\x->isPrint x||x=='\\'||x=='\n')
+      -- traceM $show a
+      if a == '\''
+        then unexpected "Meet the end"
+        else if a == '\\'
+            then do
+              b<- satisfy (\x->isPrint x||x=='\\'||x=='\n')
+              -- traceM $ show b
+              case b of
+                'n'-> return "\n"
+                '\''-> return "'"
+                '\n'-> return ""
+                '\\'-> return "\\"
+                _->unexpected $ "After \\ is an unacceptable char" ++ show b
+            else return [a] )
+
 stringConst :: Parser Exp
 stringConst = do
+  char '\''
+  s <- many stringCheck
   string "'"
-  s <- many $satisfy (\x -> isPrint x || (x == '\n') || (x /= '\''))
-  string "'"
-  return (Const (StringVal s))
--- TODO:Where to use the comment function?
+  return (Const (StringVal (concat s)))
 comment::Parser ()
 comment=try (
   do
@@ -352,7 +367,7 @@ comment=try (
     manyTill anyChar (try (string "\n"))
     return ()
   )<|> return ()
-
-
 lexeme :: Parser a -> Parser a
 lexeme x = do try spaces; a <- x; try spaces; comment; return a
+main = 
+  parseTest stringConst  "'fo\\\\o\nb\na\\\\\'r'"

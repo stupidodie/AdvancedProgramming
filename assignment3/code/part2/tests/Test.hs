@@ -5,7 +5,6 @@ import BoaParser
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import BoaParser (parseString)
 import Foreign (Bits(testBit))
 import Data.Either (Either(Right))
 
@@ -41,6 +40,11 @@ tests = testGroup "Parser Tests: " [
       Left e -> return ()
       Right p -> assertFailure $ "Unexpected parse: " ++ show p
   ],
+  testGroup "String Tests" [
+    testCase "String Test 1" $
+      parseString  "'fo\\\\o\nb\na\\\\\'r'" @?=
+        Right [SExp (Const (StringVal "fo\\o\nb\na\\"))]
+  ],
   testGroup "ident Tests" [
     testCase "None reserved word hello" $
       parseString "hello" @?=
@@ -56,17 +60,17 @@ tests = testGroup "Parser Tests: " [
         Right [SExp (Var "__value")],
     testCase "Reserved word if" $
        case parseString "if" of
-          Left e -> return ()  -- any message is OK
+          Left e -> return ()  
           Right p -> assertFailure $ "Unexpected parse: " ++ show p
           ,
     testCase "Reserved word not" $
         case parseString "not" of
-          Left e -> return ()  -- any message is OK
+          Left e -> return ()  
           Right p -> assertFailure $ "Unexpected parse: " ++ show p
           ,
     testCase "Reserved word in" $
         case parseString "in" of
-          Left e -> return ()  -- any message is OK
+          Left e -> return ()  
           Right p -> assertFailure $ "Unexpected parse: " ++ show p
   ],
   testGroup "EXP Tests" [

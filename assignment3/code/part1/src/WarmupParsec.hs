@@ -32,6 +32,7 @@ parseString = runParser (do e<-parserE; eof; return e) () ""
 
 parserE =
   do
+    spaces
     symbol "-"
     e <- parserT
     parserE' (Negate e)
@@ -72,4 +73,4 @@ symbol s = do
   spaces
   return ()
 
--- main = print (parseString "( - ( - 123 ) - ( 69 + 1 ) ) + 5")
+main = print (parseString "\t \n - 1 + 2 - ( 3 ) ")

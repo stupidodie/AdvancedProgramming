@@ -41,6 +41,7 @@ parseString s = case readP_to_S (do e <- parserE; eof; return e) s of
 parserE :: Parser Exp
 parserE =
   do
+    skipSpaces
     symbol "-"
     e <- parserT
     parserE' (Negate e)
