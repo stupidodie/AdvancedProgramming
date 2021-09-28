@@ -88,22 +88,23 @@ expParse :: Parser Exp
 expParse = lexeme $ try
   (do
       e1<- exp1
-      symbol "in"
+      skipMany1 space
+      string "in"
       Oper In e1 <$> exp1
   )
   <|> try
     (
       do
         e1<- exp1
-        symbol "not"
-        symbol "in"
+        string "not"
+        skipMany1 space
+        string "in"
         Not . Oper In e1 <$> exp1
     )
     <|>exp1
 
 exp1 :: Parser Exp
-exp1 =lexeme $
-  try
+exp1 = try
     ( do
         e1 <- exp2
         symbol "=="
@@ -141,7 +142,7 @@ exp1 =lexeme $
       )
     <|> try exp2
 exp2 :: Parser Exp
-exp2 = lexeme $ do
+exp2 = do
   e1 <- exp4
   spaces
   e2 <- exp3
@@ -271,10 +272,12 @@ ifClause = do
 
 forClause :: Parser CClause
 forClause = do
-  symbol "for"
+  string "for"
+  skipMany1 space
   vname <- ident
-
-  symbol "in"
+  skipMany1 space
+  string "in"
+  skipMany1 space
   CCFor vname <$> expParse
 
 clausez :: Parser [CClause]
@@ -313,7 +316,7 @@ symbol s = lexeme $ do
   return ()
 
 ident :: Parser String
-ident = lexeme $ do
+ident =  do
   first <- satisfy (\x -> x == '_' || isLetter x)
   rest <- many $satisfy (\x -> x == '_' || isLetter x || isNumber x)
   ( \s ->
@@ -340,8 +343,6 @@ numConst =
       if numFirst == '0' && numRest /= []
         then unexpected $ "illegal Number " ++ (numFirst : numRest)
         else return (Const (IntVal ((read :: String -> Int) (numFirst : numRest))))
-
--- TODO:Need to handle the String
 stringCheck:: Parser String
 stringCheck = try (
     do
