@@ -29,7 +29,8 @@ import Text.ParserCombinators.Parsec
     eof,
     lookAhead,
     char,
-    parseTest 
+    parseTest, skipMany1,
+    space
   )
 
 -- add any other other imports you need
@@ -208,13 +209,16 @@ exp6 = lexeme exprParser
 
 exprParser :: Parser Exp
 exprParser =
-  numConst
-    <|> do
+ try numConst
+    <|> try (
+      do
       symbol "None"
       return (Const NoneVal)
-    <|> do
+    )
+    <|> try (do
       symbol "True"
       return (Const TrueVal)
+    )
     <|> do
       symbol "False"
       return (Const FalseVal)
@@ -227,9 +231,12 @@ exprParser =
           symbol ")"
           return (Call s l)
       )
-    <|> do
-      symbol "not"
+    <|> try(
+      do
+      string "not"
+      skipMany1 space
       Not <$> expParse
+    )
     <|> try (do
       symbol "("
       e <- expParse
@@ -323,7 +330,7 @@ numConst =
         satisfy (== '-')
         numFirst <- digit
         numRest <- many digit
-        if numFirst == '0'
+        if numFirst == '0' && numRest /= []
           then unexpected $ "illegal Number " ++ (numFirst : numRest)
           else return (Const (IntVal (-1 * (read :: String -> Int) (numFirst : numRest))))
     )
@@ -359,7 +366,9 @@ stringConst = do
   char '\''
   s <- many stringCheck
   string "'"
-  return (Const (StringVal (concat s)))
+  if concat s=="\n"
+    then unexpected "Cannot be the raw newline"
+    else return (Const (StringVal (concat s)))
 comment::Parser ()
 comment=try (
   do
@@ -369,5 +378,4 @@ comment=try (
   )<|> return ()
 lexeme :: Parser a -> Parser a
 lexeme x = do try spaces; a <- x; try spaces; comment; return a
-main = 
-  parseTest stringConst  "'fo\\\\o\nb\na\\\\\'r'"
+main = print(parseString "notx")
