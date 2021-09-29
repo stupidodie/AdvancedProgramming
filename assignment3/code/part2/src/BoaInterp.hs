@@ -279,4 +279,3 @@ execute :: Program -> ([String], Maybe RunError)
 execute l = case runComp (exec l) [] of
   (Left e, s) -> (s, Just e)
   (_, s) -> (s, Nothing)
-main=print(execute [SDef "a" (Const (IntVal 3)),SExp (Compr (Var "x") [CCFor "x" (Call "range" [Const (IntVal 1),Const (IntVal 5),Const (IntVal 1)])]),SExp (Call "print" [Compr (Var "x") [CCFor "x" (Call "range" [Const (IntVal 1),Const (IntVal 5),Const (IntVal 1)])]])])
