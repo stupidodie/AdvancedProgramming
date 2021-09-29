@@ -36,14 +36,22 @@ tests = testGroup "Parser Tests: " [
       Left e -> return ()
       Right p -> assertFailure $ "Unexpected parse: " ++ show p,
   testCase "Positive Number -0" $
-    case parseString "-0" of
-      Left e -> return ()
-      Right p -> assertFailure $ "Unexpected parse: " ++ show p
+     parseString "-0" @?=
+      Right [SExp (Const (IntVal 0))]
   ],
   testGroup "String Tests" [
     testCase "String Test 1" $
-      parseString  "'fo\\\\o\nb\na\\\\\'r'" @?=
-        Right [SExp (Const (StringVal "fo\\o\nb\na\\"))]
+      parseString  "'hello_world'" @?=
+        Right [SExp (Const (StringVal "hello_world"))],
+    testCase "String Test 2" $
+      parseString  "'hello_world\n\\\\'" @?=
+        Right [SExp (Const (StringVal "hello_world\n\\"))],
+    testCase "String Test 3" $
+      parseString  "'hello_world\n\\\'\n'" @?=
+        Right [SExp (Const (StringVal "hello_world\n'\n"))],
+    testCase "String Test 4" $
+      parseString  "'#hello\nworld'" @?=
+        Right [SExp (Const (StringVal "\nworld"))]
   ],
   testGroup "ident Tests" [
     testCase "None reserved word hello" $
@@ -141,7 +149,7 @@ tests = testGroup "Parser Tests: " [
       parseString "1 >= 2" @?=
         Right [SExp (Not (Oper Less (Const (IntVal 1)) (Const (IntVal 2))))],
     testCase "Exp Oper 12" $
-      parseString " x in x*x" @?=
+      parseString " x in x * x" @?=
         Right [SExp (Oper In (Var "x") (Oper Times (Var "x") (Var "x")))],
     testCase "Exp Oper 13" $
       parseString " x not in x*x" @?=
@@ -172,12 +180,12 @@ tests = testGroup "Parser Tests: " [
       parseString "x=[i for i in range(1,5,1)];print(x)" @?=
         Right [SDef "x" (Compr (Var "i") [CCFor "i" (Call "range" [Const (IntVal 1),Const (IntVal 5),Const (IntVal 1)])]),SExp (Call "print" [Var "x"])],
     testCase "Stmts 2" $
-      parseString "x=[i for i in range(1,5,1)];print(x);j=1;print(j in x)" @?=
+      parseString "x=[i for i in range (1,5,1)];print (x);j=1;print (j in x)" @?=
         Right [SDef "x" (Compr (Var "i") [CCFor "i" (Call "range" [Const (IntVal 1),Const (IntVal 5),Const (IntVal 1)])]),SExp (Call "print" [Var "x"]),SDef "j" (Const (IntVal 1)),SExp (Call "print" [Oper In (Var "j") (Var "x")])]
   ],
   testGroup "Comment"[
     testCase "Comment 1" $
-      parseString "x=[i for i in range(1,5,1)];#comment\nprint(x)" @?=
+      parseString "x=[i for i in range(1,5,1)];#comment\n print(x)" @?=
         Right [SDef "x" (Compr (Var "i") [CCFor "i" (Call "range" [Const (IntVal 1),Const (IntVal 5),Const (IntVal 1)])]),SExp (Call "print" [Var "x"])],
     testCase "Comment 2" $
       parseString "2+#Comments\n3" @?=

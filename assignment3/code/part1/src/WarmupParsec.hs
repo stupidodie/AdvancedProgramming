@@ -73,4 +73,4 @@ symbol s = do
   spaces
   return ()
 
-main = print (parseString "\t \n - 1 + 2 - ( 3 ) ")
+-- main = print (parseString "\t \n - 1 + 2 - ( 3 ) ")

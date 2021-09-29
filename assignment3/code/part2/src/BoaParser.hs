@@ -10,30 +10,9 @@ import BoaAST
     Stmt (..),
     Value (FalseVal, IntVal, NoneVal, StringVal, TrueVal),
   )
-import Debug.Trace
+-- import Debug.Trace
 import Data.Char (isLetter, isNumber, isPrint)
 import Text.ParserCombinators.Parsec
-  ( ParseError,
-    Parser,
-    digit,
-    many,
-    runParser,
-    satisfy,
-    spaces,
-    string,
-    try,
-    unexpected,
-    (<|>),
-    manyTill,
-    anyChar,
-    eof,
-    lookAhead,
-    char,
-    parseTest, skipMany1,
-    space,
-    anyToken, skipMany
-  )
-
 -- add any other other imports you need
 
 -- Due to the library Text.ParserCombinators.Parsec
@@ -349,27 +328,24 @@ stringCheck:: Parser String
 stringCheck = try (
     do
       a <- satisfy (\x->isPrint x||x=='\\'||x=='\n')
-      -- traceM $show a
       if a == '\''
         then unexpected "Meet the end"
         else if a == '\\'
             then do
               b<- satisfy (\x->isPrint x||x=='\\'||x=='\n')
-              -- traceM $ show b
               case b of
                 'n'-> return "\n"
-                '\''-> return "'"
+                '\''-> return [b]
                 '\n'-> return ""
                 '\\'-> return "\\"
                 _->unexpected $ "After \\ is an unacceptable char" ++ show b
             else return [a] )
-
 stringConst :: Parser Exp
 stringConst = do
   char '\''
   comment
   s <- many stringCheck
-  string "'"
+  char '\''
   if concat s=="\n"
     then unexpected "Cannot be the raw newline"
     else return (Const (StringVal (concat s)))
@@ -378,9 +354,8 @@ comment=try (
   do
     string "#"
     skipMany (satisfy (/= '\n'))
+    -- char '\n'
     return ()
   )<|> return ()
 lexeme :: Parser a -> Parser a
 lexeme x = do spaces; comment; a <- x; spaces; comment; return a
-
-main = print (parseString "notx")
