@@ -1,6 +1,6 @@
 -module(async).
-
--export([new/2, wait/1, poll/1,myTest/0]).
+% -compile[debug,export_all].
+-export([new/2, wait/1, poll/1]).
 
 new(Fun, Arg) -> 
     Me = self(), 
@@ -16,26 +16,20 @@ end).
 
 wait(Aid) -> 
     case poll(Aid) of 
-        nothing -> 
-            io:format("Still waiting"),
-            wait(Aid);
-        ResOrException -> ResOrException
+        nothing -> wait(Aid);
+        {ok, Res}->Res;
+        {exception,Reason }->throw(Reason)
     end.
         
 poll(Aid) -> 
     receive 
-        {Aid,{ok, Res}} -> io:format("~w~n",[{ok, Res}]), {ok, Res};
-        {Aid,Reason} -> {exception,Reason }
+        {Aid,{ok, Res}} -> self()!{Aid,{ok,Res}},{ok, Res};
+        {Aid,Reason} -> self()!{Aid,Reason},{exception,Reason }
     after 0 
         -> nothing 
     end.
 
-myTest()->
-    Aid=new(fun(X)->timer:sleep(200), X+1 end,1),
-    io:format("Aid is ~p\n",[Aid]),
-    io:format("run the poll\n"),
-    wait(Aid),
-    Aid2=new(fun(X)->throw("das") end,233),
-    io:format("Aid2 is ~p\n",[Aid2]),
-    io:format("run the poll\n"),
-    wait(Aid2).
+% myTest()->
+%     A = new(fun(X) -> X end, 54),
+%     54 =:= wait(A),
+%     wait(A) =:= wait(A). 
