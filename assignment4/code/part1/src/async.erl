@@ -1,35 +1,49 @@
 -module(async).
-% -compile[debug,export_all].
+-compile[debug,export_all].
 -export([new/2, wait/1, poll/1]).
 
-new(Fun, Arg) -> 
-    Me = self(), 
+new(Fun, Arg) -> spawn(fun()->
+    Me=self(),
     spawn(fun()->
-    try 
-        Res=Fun(Arg),
-        Me!{self(),{ok,Res}},
-        self()
-    catch
-        _:Reason->Me!{self(),Reason}
-    end
-end).
-
+        try 
+            Res=Fun(Arg),
+            Me!{ok,Res}
+        catch
+            _:Reason->Me!{error,Reason}
+        end
+   end),
+loop({init})
+end
+).
 wait(Aid) -> 
     case poll(Aid) of 
         nothing -> wait(Aid);
         {ok, Res}->Res;
-        {exception,Reason }->throw(Reason)
+        {exception,Reason}->throw(Reason)
     end.
         
 poll(Aid) -> 
+    Aid!{self(),getState},
     receive 
-        {Aid,{ok, Res}} -> self()!{Aid,{ok,Res}},{ok, Res};
-        {Aid,Reason} -> self()!{Aid,Reason},{exception,Reason }
-    after 0 
-        -> nothing 
+        % Msg->io:format("233~w\n",[Msg]);
+        {ok, Res} -> {ok, Res};
+        {error,Reason} -> {exception,Reason };
+        {nothing}->nothing
+    % after 0 
+    %     -> nothing 
     end.
-
-% myTest()->
-%     A = new(fun(X) -> X end, 54),
-%     54 =:= wait(A),
-%     wait(A) =:= wait(A). 
+loop(State)->
+    receive 
+        {ok,Res} -> loop({ok,Res});
+        {error,Reason} -> loop({error,Reason});
+        {From,getState}-> 
+            case State of
+                {init} -> From!{nothing},loop(State);
+                _->From!State,loop(State)
+            end
+    end.
+myTest()->
+    A = new(fun(X) -> X end, 54),
+    poll(A).
+    % 54 =:= wait(A),
+    % wait(A) =:= wait(A). 
