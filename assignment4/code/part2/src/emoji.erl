@@ -10,7 +10,8 @@
 
 
 start(Initial) -> 
-    ShortCodeList=lists:map(fun(Emoji)->case Emoji of {ShortCode, _}->ShortCode end end, Initial),
+    ShortCodeList=
+        lists:map(fun(Emoji)->case Emoji of {ShortCode, _}->ShortCode end end, Initial),
     case judgeListNotDuplicate(ShortCodeList)  of
         false->{error, "Duplicated shortcodes!"};
         true->
@@ -64,6 +65,7 @@ get_analytics(E, Short) ->
 
 remove_analytics(E, Short, Label) -> 
     E!{self(),remove_analytics,Short,Label}.
+
 stop(E) -> 
     E!{self(),stop},
     receive 
@@ -87,7 +89,8 @@ convertList(List)->
         [{ShortCode, Emo}|Rest]->[{ShortCode, Emo,[ShortCode],[]}|convertList(Rest)]
     end.
 loop(EmojiList)->
-    ShortCodeList=lists:map(fun(Emoji)->case Emoji of {ShortCode, _,_,_}->ShortCode end end, EmojiList),
+    ShortCodeList=
+        lists:map(fun(Emoji)->case Emoji of {ShortCode, _,_,_}->ShortCode end end, EmojiList),
     receive
         {From,new_shortcode,Short,Emo}->
             case lists:member(Short,ShortCodeList) of
@@ -100,7 +103,8 @@ loop(EmojiList)->
                 true->
                     case lists:member(Short2,ShortCodeList) of
                         true->From!{self(),{error, "The Short2 is already registered!"}},loop(EmojiList);
-                        false->From!{self(),ok},loop(aliasShort(findOriginalName(Short1,EmojiList),Short2,EmojiList))
+                        false->From!{self(),ok},
+                        loop(aliasShort(findOriginalName(Short1,EmojiList),Short2,EmojiList))
                     end
             end;
         {_,delete,Short}->
@@ -111,7 +115,13 @@ loop(EmojiList)->
         {From,lookup,Short}->
             case lists:member(Short,ShortCodeList) of
                 false->From!{self(),no_emoji},loop(EmojiList);
-                true->From!{self(),{ok,lookupValue(findOriginalName(Short,EmojiList),EmojiList)}},loop(callAnalysis(findOriginalName(Short,EmojiList),EmojiList))
+                true->
+                    try NewEmojiList=callAnalysis(findOriginalName(Short,EmojiList),EmojiList),
+                        From!{self(),{ok,lookupValue(findOriginalName(Short,EmojiList),EmojiList)}},
+                     loop(NewEmojiList)
+                    catch _:Reason->From!{self(),{error, Reason}}
+                end
+                    
             end;
         {From,stop}->From!{self(),ok};
         {From,analytics,Short,Fun,Label,Init}->
@@ -131,8 +141,8 @@ loop(EmojiList)->
             case lists:member(Short,ShortCodeList) of
                 false->loop(EmojiList);
                 true->loop(removeAnalysis(findOriginalName(Short,EmojiList),Label,EmojiList))
-            end
-        % {From,_,_}->From!{self(),{error, "Unknown command!"}},loop(EmojiList)
+            end;
+        {From,_,_}->From!{self(),{error, "Unknown command!"}},loop(EmojiList)
     end.
 removeAnalysis(Short,Label,List)->
     case List of 
