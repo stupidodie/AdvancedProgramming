@@ -1,5 +1,5 @@
 -module(async).
--compile[debug,export_all].
+% -compile[debug,export_all].
 -export([new/2, wait/1, poll/1]).
 
 new(Fun, Arg) -> spawn(fun()->
@@ -25,7 +25,6 @@ wait(Aid) ->
 poll(Aid) -> 
     Aid!{self(),getState},
     receive 
-        % Msg->io:format("233~w\n",[Msg]);
         {ok, Res} -> {ok, Res};
         {error,Reason} -> {exception,Reason };
         {nothing}->nothing
@@ -42,8 +41,3 @@ loop(State)->
                 _->From!State,loop(State)
             end
     end.
-myTest()->
-    A = new(fun(X) -> X end, 54),
-    poll(A).
-    % 54 =:= wait(A),
-    % wait(A) =:= wait(A). 
