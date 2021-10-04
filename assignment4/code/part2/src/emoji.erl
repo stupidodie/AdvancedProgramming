@@ -1,14 +1,28 @@
 -module(emoji).
-
+% -compile[denug,export_all].
 -export([start/1, new_shortcode/3, alias/3, delete/2, lookup/2,
          analytics/5, get_analytics/2, remove_analytics/3,
          stop/1]).
--compile[debug,export_all].
 -type shortcode() :: string().
 -type emoji() :: binary().
 -type analytic_fun(State) :: fun((shortcode(), State) -> State).
-
-
+-spec start(Initial::list())-> any() .
+-spec new_shortcode(E::pid(),Short::shortcode(),Emo::emoji()) ->any().
+-spec findOriginalName(Short::shortcode(),List::list()) ->Short::shortcode().
+-spec alias(E::pid(),Short::shortcode(),Emo::emoji()) ->any().
+-spec delete(E::pid(),Short::shortcode()) ->any().
+-spec lookup(E::pid(),Short::shortcode()) ->any().
+-spec analytics(E::pid(),Short::shortcode(),Fun::analytic_fun(State::any()),Label::string(),State::any()) ->any().
+-spec get_analytics(E::pid(),Short::shortcode()) ->any().
+-spec remove_analytics(E::pid(),Short::shortcode(),Label::string()) ->any().
+-spec stop(E::pid()) ->any().
+-spec judgeListNotDuplicate(List::list()) ->boolean().
+-spec convertList(List::list()) ->list().
+-spec loop(list())->any().
+-spec removeAnalysis(Short::shortcode(),Label::string(),List::list())->list().
+-spec removeLabel(Short::shortcode(),List::list())->list().
+-spec getAnalysis(Short::shortcode(),List::list())->list().
+-spec getStat(FunList::list())->list().
 start(Initial) -> 
     ShortCodeList=
         lists:map(fun(Emoji)->case Emoji of {ShortCode, _}->ShortCode end end, Initial),
@@ -83,6 +97,19 @@ judgeListNotDuplicate(ShortCodeList)->
                 false -> judgeListNotDuplicate(Rest)
             end
     end.
+
+%% The List after converted is a list of {ShortCode,Emo,Alias,FunList}
+%% The Emo is either a binary or an atom alias (when it is an alias)
+%% The Alias is a list of itself and its alias
+%% The FunList is a list of  {Fun, Lable, State}
+%% Example:
+%% The First Emoji List: [{"smiley", <<240, 159, 152, 131>>, ["smiley"], []}]
+%% Add an alias SS to the Emoji "smiley":
+%% [{"smiley", <<240, 159, 152, 131>>, ["smiley","SS"], []}, 
+%% {"SS", alias, ["SS"], []}]
+%% Add an analytics (fun(_, N) -> N+1 end, "Count", 0) to the Emoji "smiley":
+%% [{"smiley", <<240, 159, 152, 131>>, ["smiley","SS"], [{un(_, N) -> N+1 end, "Count", 0]}, 
+%% {"SS", alias, ["SS"], []}]
 convertList(List)->
     case List of
         []->[];
@@ -115,13 +142,24 @@ loop(EmojiList)->
         {From,lookup,Short}->
             case lists:member(Short,ShortCodeList) of
                 false->From!{self(),no_emoji},loop(EmojiList);
-                true->
-                    try NewEmojiList=callAnalysis(findOriginalName(Short,EmojiList),EmojiList),
-                        From!{self(),{ok,lookupValue(findOriginalName(Short,EmojiList),EmojiList)}},
-                     loop(NewEmojiList)
-                    catch _:Reason->From!{self(),{error, Reason}}
-                end
-                    
+                true-> 
+                    From!{self(),{ok,lookupValue(findOriginalName(Short,EmojiList),EmojiList)}},
+                    NewEmojiList=callAnalysis(findOriginalName(Short,EmojiList),EmojiList,Short),
+                    loop(NewEmojiList)
+                %%  The Old handle Code...
+                    % Me=self(),
+                    % process_flag(trap_exit,true),
+                    % Worker=spawn_link(fun()->
+                    %         NewEmojiList=callAnalysis(findOriginalName(Short,EmojiList),EmojiList,Short),
+                    %         Me!{self(),NewEmojiList} 
+                    % end),
+                    % NewState=
+                    % receive
+                    %     {Worker,NewEmojiList}->NewEmojiList;
+                    %     {'EXIT', Worker, _}->EmojiList
+                    % end,
+                    %  loop(NewState)    
+                %%  END LINE
             end;
         {From,stop}->From!{self(),ok};
         {From,analytics,Short,Fun,Label,Init}->
@@ -142,7 +180,7 @@ loop(EmojiList)->
                 false->loop(EmojiList);
                 true->loop(removeAnalysis(findOriginalName(Short,EmojiList),Label,EmojiList))
             end;
-        {From,_,_}->From!{self(),{error, "Unknown command!"}},loop(EmojiList)
+         {From,_,_}->From!{self(),{error, "Unknown command!"}},loop(EmojiList)
     end.
 removeAnalysis(Short,Label,List)->
     case List of 
@@ -230,19 +268,22 @@ lookupValue(Short,List)->
                 false-> lookupValue(Short,Rest)
             end
     end.
-callAnalysis(Short,List)->
+callAnalysis(Short,List,OriginalShort)->
     case List of
         []->[];
         [{Short1,Emo,Alias,FunList}|Rest]->
             case Short1==Short of
-                true->[{Short1,Emo,Alias,applyFunction(Short,FunList)}|Rest];
-                false-> [{Short1,Emo,Alias,FunList}|callAnalysis(Short,Rest)]
+                true->[{Short1,Emo,Alias,applyFunction(OriginalShort,FunList)}|Rest];
+                false-> [{Short1,Emo,Alias,FunList}|callAnalysis(Short,Rest,OriginalShort)]
             end
     end.
 applyFunction(Short,FunList)->
     case FunList of
         []->[];
-        [{Fun,Label,State}|Rest]->[{Fun,Label,Fun(Short,State)}|applyFunction(Short,Rest)]
+        [{Fun,Label,State}|Rest]->
+            try [{Fun,Label,Fun(Short,State)}|applyFunction(Short,Rest)]
+        catch _:_->[{Fun,Label,State}|applyFunction(Short,Rest)]
+    end
     end.
 aliasShort(Short1,Short2,List)->
     case List of
