@@ -411,7 +411,7 @@ test_remove_analytics() ->
         emoji:remove_analytics(S, "KeyAlias", "Add"),
         ?assertEqual({ok,[]}, emoji:get_analytics(S, "Key"))        
     end },
-    {"Remove analytics which shortocode  and label exist check shortcode alias",
+    {"Remove analytics which shortocode and label exist check shortcode alias",
     fun () ->
         Initial = [{"Key", <<240,159,148,145>>}],
         {ok, S} = emoji:start(Initial),

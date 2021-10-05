@@ -100,10 +100,10 @@ judgeListNotDuplicate(ShortCodeList)->
 %% The First Emoji List: [{"smiley", <<240, 159, 152, 131>>, ["smiley"], []}]
 %% Add an alias SS to the Emoji "smiley":
 %% [{"smiley", <<240, 159, 152, 131>>, ["smiley","SS"], []}, 
-%% {"SS", alias, ["SS"], []}]
-%% Add an analytics (fun(_, N) -> N+1 end, "Count", 0) to the Emoji "smiley":
-%% [{"smiley", <<240, 159, 152, 131>>, ["smiley","SS"], [{un(_, N) -> N+1 end, "Count", 0]}, 
-%% {"SS", alias, ["SS"], []}]
+%% {"SS", alias, "smiley", []}]
+%% Add an analytics (fun(_, N) -> N+1 end, "Add", 0) to the Emoji "smiley":
+%% [{"smiley", <<240, 159, 152, 131>>, ["smiley","SS"], [{un(_, N) -> N+1 end, "Add", 0]}, 
+%% {"SS", alias, "smiley", []}]
 
 -spec convertList(List::list()) ->list().
 convertList(List)->
@@ -327,3 +327,4 @@ deleteValue(AliasList,List)->
                 false->[{Short,Emo,Alias,FunList}|deleteValue(AliasList,Rest)]
             end
     end.
+
