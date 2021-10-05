@@ -6,23 +6,8 @@
 -type shortcode() :: string().
 -type emoji() :: binary().
 -type analytic_fun(State) :: fun((shortcode(), State) -> State).
+
 -spec start(Initial::list())-> any() .
--spec new_shortcode(E::pid(),Short::shortcode(),Emo::emoji()) ->any().
--spec findOriginalName(Short::shortcode(),List::list()) ->Short::shortcode().
--spec alias(E::pid(),Short::shortcode(),Emo::emoji()) ->any().
--spec delete(E::pid(),Short::shortcode()) ->any().
--spec lookup(E::pid(),Short::shortcode()) ->any().
--spec analytics(E::pid(),Short::shortcode(),Fun::analytic_fun(State::any()),Label::string(),State::any()) ->any().
--spec get_analytics(E::pid(),Short::shortcode()) ->any().
--spec remove_analytics(E::pid(),Short::shortcode(),Label::string()) ->any().
--spec stop(E::pid()) ->any().
--spec judgeListNotDuplicate(List::list()) ->boolean().
--spec convertList(List::list()) ->list().
--spec loop(list())->any().
--spec removeAnalysis(Short::shortcode(),Label::string(),List::list())->list().
--spec removeLabel(Short::shortcode(),List::list())->list().
--spec getAnalysis(Short::shortcode(),List::list())->list().
--spec getStat(FunList::list())->list().
 start(Initial) -> 
     ShortCodeList=
         lists:map(fun(Emoji)->case Emoji of {ShortCode, _}->ShortCode end end, Initial),
@@ -37,6 +22,7 @@ start(Initial) ->
             end
     end.
 
+-spec new_shortcode(E::pid(),Short::shortcode(),Emo::emoji()) ->any().
 new_shortcode(E, Short, Emo) -> 
     E!{self(),new_shortcode,Short,Emo},
     receive
@@ -44,6 +30,7 @@ new_shortcode(E, Short, Emo) ->
         {E,{error,Reason}}->{error, Reason}
     end.
 
+-spec alias(E::pid(),Short::shortcode(),Emo::emoji()) ->any().
 alias(E,Short1, Short2) -> 
     E!{self(),alias,Short1,Short2},
     receive
@@ -51,10 +38,13 @@ alias(E,Short1, Short2) ->
         {E,{error,Reason}}->{error, Reason}
     end.
 
+
+-spec delete(E::pid(),Short::shortcode()) ->any().
 delete(E, Short) -> 
     E!{self(),delete,Short},
     ok.
 
+-spec lookup(E::pid(),Short::shortcode()) ->any().
 lookup(E, Short) ->
     E!{self(),lookup,Short}, 
     receive
@@ -62,6 +52,7 @@ lookup(E, Short) ->
         {E,no_emoji}->no_emoji
     end.
 
+-spec analytics(E::pid(),Short::shortcode(),Fun::analytic_fun(State::any()),Label::string(),State::any()) ->any().
 analytics(E, Short, Fun, Label, Init) -> 
     E!{self(),analytics,Short,Fun,Label,Init},
     receive
@@ -69,6 +60,7 @@ analytics(E, Short, Fun, Label, Init) ->
         {E,{error,Reason}}->{error, Reason}
     end.
 
+-spec get_analytics(E::pid(),Short::shortcode()) ->any().
 get_analytics(E, Short) -> 
     E!{self(),get_analytics,Short},
     receive
@@ -76,10 +68,11 @@ get_analytics(E, Short) ->
         {E,{error,Reason}}->{error, Reason}
     end.
 
-
+-spec remove_analytics(E::pid(),Short::shortcode(),Label::string()) ->any().
 remove_analytics(E, Short, Label) -> 
     E!{self(),remove_analytics,Short,Label}.
 
+-spec stop(E::pid()) ->any().
 stop(E) -> 
     E!{self(),stop},
     receive 
@@ -87,6 +80,7 @@ stop(E) ->
         {E,{error,Reason}}->{error, Reason}
     end.
 
+-spec judgeListNotDuplicate(List::list()) ->boolean().
 judgeListNotDuplicate(ShortCodeList)->
     case ShortCodeList of
         []->true;
@@ -110,11 +104,15 @@ judgeListNotDuplicate(ShortCodeList)->
 %% Add an analytics (fun(_, N) -> N+1 end, "Count", 0) to the Emoji "smiley":
 %% [{"smiley", <<240, 159, 152, 131>>, ["smiley","SS"], [{un(_, N) -> N+1 end, "Count", 0]}, 
 %% {"SS", alias, ["SS"], []}]
+
+-spec convertList(List::list()) ->list().
 convertList(List)->
     case List of
         []->[];
         [{ShortCode, Emo}|Rest]->[{ShortCode, Emo,[ShortCode],[]}|convertList(Rest)]
     end.
+
+-spec loop(list())->any().
 loop(EmojiList)->
     ShortCodeList=
         lists:map(fun(Emoji)->case Emoji of {ShortCode, _,_,_}->ShortCode end end, EmojiList),
@@ -182,6 +180,8 @@ loop(EmojiList)->
             end;
          {From,_,_}->From!{self(),{error, "Unknown command!"}},loop(EmojiList)
     end.
+
+-spec removeAnalysis(Short::shortcode(),Label::string(),List::list())->list().
 removeAnalysis(Short,Label,List)->
     case List of 
         []->[];
@@ -191,6 +191,8 @@ removeAnalysis(Short,Label,List)->
                 false->[{ShortCode, Emo, Alias, FunList}|removeAnalysis(Short,Label,Rest)]
             end
     end.
+
+-spec removeLabel(Short::shortcode(),List::list())->list().
 removeLabel(Label,FunList)->
     case FunList of
         []->[];
@@ -200,6 +202,7 @@ removeLabel(Label,FunList)->
                 false->[{Fun1,Label1, State1}|removeLabel(Label,Rest)]
             end
 end.
+-spec getAnalysis(Short::shortcode(),List::list())->list().
 getAnalysis(Short,List)->
     case List of
         []->[];
@@ -209,11 +212,14 @@ getAnalysis(Short,List)->
                 false->getAnalysis(Short,Rest)
             end
     end.
+-spec getStat(FunList::list())->list().
 getStat(FunList)->
     case FunList of
         []->[];
         [{_,Label,State}|Rest]->[{Label,State}|getStat(Rest)]
     end.
+
+-spec findOriginalName(Short::shortcode(),List::list()) ->Short::shortcode().
 findOriginalName(Short,List)->
     case List of
         []->[];
@@ -227,6 +233,7 @@ findOriginalName(Short,List)->
                     end
              end
 end.
+-spec addAnalysis(Short::shortcode(),Fun::analytic_fun(Init::any()),Label::string(),Init::any(),List::list())->list().
 addAnalysis(Short,Fun,Label,Init,EmojiList)->
     case EmojiList of
         []->[];
@@ -237,6 +244,7 @@ addAnalysis(Short,Fun,Label,Init,EmojiList)->
             end
     end.
 
+-spec checkLabelAvailabel(Short::shortcode(),Label::string(),List::list())->boolean().
 checkLabelAvailabel(Short,Label,List)->
     case List of
         []->[];
@@ -250,6 +258,7 @@ checkLabelAvailabel(Short,Label,List)->
                     end
             end
     end.
+-spec checkLableInFunList(Label::string(),FunList::list())->boolean().
 checkLableInFunList(Label,FunList)->
     case FunList of
         []->false;
@@ -259,6 +268,7 @@ checkLableInFunList(Label,FunList)->
                 false->checkLableInFunList(Label,Rest)
             end
     end.
+-spec lookupValue(Short::shortcode(),List::list())->any().
 lookupValue(Short,List)->
     case List of
         []->[];
@@ -268,6 +278,7 @@ lookupValue(Short,List)->
                 false-> lookupValue(Short,Rest)
             end
     end.
+-spec callAnalysis(Short::shortcode(),List::list(),OriginalShort::shortcode())->any().
 callAnalysis(Short,List,OriginalShort)->
     case List of
         []->[];
@@ -277,6 +288,7 @@ callAnalysis(Short,List,OriginalShort)->
                 false-> [{Short1,Emo,Alias,FunList}|callAnalysis(Short,Rest,OriginalShort)]
             end
     end.
+-spec applyFunction(Short::shortcode(),FunList::list())->list().
 applyFunction(Short,FunList)->
     case FunList of
         []->[];
@@ -285,6 +297,7 @@ applyFunction(Short,FunList)->
         catch _:_->[{Fun,Label,State}|applyFunction(Short,Rest)]
     end
     end.
+-spec aliasShort(Short1::shortcode(),Short2::shortcode(),List::list())->list().
 aliasShort(Short1,Short2,List)->
     case List of
         []->[];
@@ -294,6 +307,7 @@ aliasShort(Short1,Short2,List)->
                 true->[{Short,Emo,[Short2|Alias],FunList}|[{Short2,alias,Short,[]}|Rest]]
             end
     end.
+-spec searchALLAliasAndSelf(Short::shortcode(),List::list())->list().
 searchALLAliasAndSelf(Short,List)->
     case List of
         []->[];
@@ -303,6 +317,7 @@ searchALLAliasAndSelf(Short,List)->
                 true->Alias
             end
     end.
+-spec deleteValue(AliasList::list(),List::list())->list().
 deleteValue(AliasList,List)-> 
     case List of
         []->[];
