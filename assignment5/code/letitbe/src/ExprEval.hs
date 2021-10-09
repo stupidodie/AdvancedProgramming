@@ -3,7 +3,8 @@ module ExprEval where
 import ExprAst
 import qualified Data.Map.Strict as M
 import Data.Map(Map)
-
+import Debug.Trace
+import Data.List(isInfixOf)
 type Env = Map String Int
 
 oper :: Op -> (Int -> Int -> Int)
@@ -23,6 +24,8 @@ eval (Let v e body) env = do
 
 evalTop e = eval e M.empty
 
+
+
 simplify e =
   case e of
     Oper Plus (Const c1) (Const c2) -> Const(c1+c2)
@@ -33,6 +36,7 @@ simplify e =
     Oper Times (Const c1) (Const 0) -> Const(0)
     Oper Times (Const c1) (Const c2) -> Const(c1*c2)
     Oper op e1 e2 -> Oper op (simplify e1) (simplify e2)
-    Let v e body ->
-      Let v (simplify e) (simplify body)
+    Let v e body ->if ("Var "++v) `isInfixOf ` show body
+        then Let v (simplify e) (simplify  body)
+        else simplify body
     _ -> e
