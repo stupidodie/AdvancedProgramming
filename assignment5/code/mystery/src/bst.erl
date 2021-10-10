@@ -24,7 +24,7 @@ valid ({branch, L, K, _V, R}) ->
   lists:all(less_than(K), keys(L)) andalso lists:all(greater_than(K), keys(R)).
 
 less_than(K) -> fun(Key) -> Key < K end.
-greater_than(K) -> fun(Key) -> K < Key end.
+greater_than(K) -> fun(Key) ->K < Key end.
 
 keys(T) -> [ K || {K, _V} <- to_sorted_list(T)].
 

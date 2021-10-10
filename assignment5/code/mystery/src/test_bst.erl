@@ -11,11 +11,26 @@
 
 
 %%% A non-symbolic generator for bst, parameterised by key and value generators
+
+%% insert values in to a leaf
 bst(Key, Value) ->
     ?LET(KVS, eqc_gen:list({Key, Value}),
          lists:foldl(fun({K,V}, T) -> insert(K, V, T) end,
                      empty(),
                      KVS)).
+%% foldl(Fun, Acc0, List) -> Acc1
+%% Types
+%% Fun = fun((Elem :: T, AccIn) -> AccOut)
+%% Acc0 = Acc1 = AccIn = AccOut = term()
+%% List = [T]
+%% T = term()
+%% examples show as below:
+%% lists:foldl(fun(X, Sum) -> X + Sum end, 0, [1,2,3,4,5]). -> 15
+%% lists:foldl(fun(X, Prod) -> X * Prod end, 1, [1,2,3,4,5]). ->120
+
+
+
+
 
 % example key and value generators
 int_key() -> eqc_gen:int().
@@ -35,9 +50,17 @@ prop_arbitrary_valid() ->
 prop_insert_valid() ->
     ?FORALL({K, V, T}, {atom_key(), int_value(), bst(atom_key(), int_value())},
             valid (insert(K, V, T))).
-
-
-
+% if the empty tree is valid
+prop_empty_valid()->
+    ?FORALL(T,empty(),valid(T)).
+% if we delete into a valid tree it stays valid
+prop_delete_valid()->
+    ?FORALL({K,T},{atom_key(),bst(atom_key(),int_value())},
+           valid(delete(K,T))).
+% if we union two valid trees it stays valid
+prop_union_valid()->
+    ?FORALL({T1,T2},{bst(atom_key(),int_value()),bst(atom_key(),int_value())},
+           valid(union(T1,T2))).
 %%% -- postcondition properties
 
 prop_insert_post() ->
@@ -57,9 +80,31 @@ prop_find_post_present() ->
                        {found, V})).
 
 
-prop_find_post_absent() -> true.
-     % ∀ k t. find k (delete k t) === nothing
+prop_find_post_absent() ->
+   % ∀ k t. find k (delete k t) === nothing
+    ?FORALL({K,T},{atom_key(),bst(atom_key(),int_value())},
+           eqc:equals(find(K,delete(K,T)),nothing)).
 
+prop_delete_post()->
+    ?FORALL({K1,K2,T},{atom_key(),atom_key(),bst(atom_key(),int_value())},
+           eqc:equals(find(K1,delete(K2,T)),
+                      case K1=:=K2 of
+                          true-> nothing;
+                          false->find(K1,T)
+                      end)).
+prop_union_post()->
+    ?FORALL({K0,K1,V1,T1,K2,V2,T2},{atom_key(),atom_key(),int_value(),bst(atom_key(),int_value()),atom_key(),int_value(),bst(atom_key(),int_value())},
+           eqc:equals(find(K0,union(insert(K1,V1,T1),insert(K2,V2,T2))),
+                     case K0=:=K1 of
+                         true->{found,V1};
+                         false->case find(K0,T1) of
+                                    nothing->case K0=:= K2 of
+                                                 true->{found,V2};
+                                                 false->find(K0,T2)
+                                             end;
+                                     {found,V}->{found,V}
+                                 end
+                     end)).
 
 %%% -- metamorphic properties
 
