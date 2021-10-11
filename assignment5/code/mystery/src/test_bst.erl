@@ -169,7 +169,15 @@ prop_insert_model() ->
             equals(model(insert(K, V, T)),
                    sorted_insert(K, V, delete_key(K, model(T))))).
 
+prop_nil_model()->eqc:equals(model(empty()),[]).
 
+prop_delete_model()->
+    ?FORALL({K,T},{atom_key(),bst(atom_key(),int_value())},equals(model(delete(K,T)),delete_key(K,model(T)))).
+%% prop_union_model()->
+%%     ?FORALL({T1,T2},{bst(atom_key(),int_value()),bst(atom_key(),int_value())},
+%%             equals(model(union(T1,T2)),))
+prop_find_model()->
+    ?FORALL({K,T},{atom_key(),bst(atom_key(),int_value())},equals(find(K,T),lookup(K,model(T)))).
 -spec delete_key(Key, [{Key, Value}]) -> [{Key, Value}].
 delete_key(Key, KVS) -> [ {K, V} || {K, V} <- KVS, K =/= Key ].
 
@@ -177,6 +185,17 @@ delete_key(Key, KVS) -> [ {K, V} || {K, V} <- KVS, K =/= Key ].
 sorted_insert(Key, Value, [{K, V} | Rest]) when K < Key ->
     [{K, V} | sorted_insert(Key, Value, Rest)];
 sorted_insert(Key, Value, KVS) -> [{Key, Value} | KVS].
+
+lookup(Key,L)->
+case L of
+    []->nothing;
+    [{K,V}|Rest]->
+        case Key=:=K of
+            true->{found,V};
+            false->lookup(Key,Rest)
+        end
+end.
+
 
 
 
