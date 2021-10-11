@@ -173,9 +173,9 @@ prop_nil_model()->eqc:equals(model(empty()),[]).
 
 prop_delete_model()->
     ?FORALL({K,T},{atom_key(),bst(atom_key(),int_value())},equals(model(delete(K,T)),delete_key(K,model(T)))).
-%% prop_union_model()->
-%%     ?FORALL({T1,T2},{bst(atom_key(),int_value()),bst(atom_key(),int_value())},
-%%             equals(model(union(T1,T2)),))
+prop_union_model()->
+     ?FORALL({T1,T2},{bst(atom_key(),int_value()),bst(atom_key(),int_value())},
+             equals(model(union(T1,T2)),unionby(model(T1),model(T2)))).
 prop_find_model()->
     ?FORALL({K,T},{atom_key(),bst(atom_key(),int_value())},equals(find(K,T),lookup(K,model(T)))).
 -spec delete_key(Key, [{Key, Value}]) -> [{Key, Value}].
@@ -195,7 +195,8 @@ case L of
             false->lookup(Key,Rest)
         end
 end.
-
+unionby(L1,L2)->
+    lists:usort(fun({K1,_},{K2,_})-> K1=<K2 end,L1++L2).
 
 
 
