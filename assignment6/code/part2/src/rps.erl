@@ -4,45 +4,50 @@
 -export([init/1,broker/3]).
 -export([find_group/2]).
 -export([callback_mode/0]).
--export([init_coor/3,one_choice/3,terminate/3,end_state/3,server_stopping/3]).
-
+-export([init_coor/3,one_choice/3,end_of_state/3,server_stopping/3]).
 
 
 start() -> gen_statem:start(?MODULE, init_broker, []).
 
-queue_up(BrokerRef,Name, Rounds) -> gen_statem:call(BrokerRef,{queue_up,Name,Rounds}).
+queue_up(BrokerRef,Name, Rounds) ->  gen_statem:call(BrokerRef,{queue_up,Name,Rounds}).
 
 move(Coordinator, Choice) -> gen_statem:call(Coordinator, {move,Choice}).
 
 statistics(BrokerRef) -> gen_statem:call(BrokerRef,ask).
 
-drain(BrokerRef, none, _) ->  gen_statem:call(BrokerRef,drain);
-drain(BrokerRef, Pid, Msg) ->  gen_statem:call(BrokerRef,drain) ,Pid!Msg.
+drain(BrokerRef, none, _) ->  spawn(fun()->gen_statem:call(BrokerRef,drain) end);
+drain(BrokerRef, Pid, Msg) ->  spawn(fun()->gen_statem:call(BrokerRef,drain),Pid!Msg end) .
 
-init_coor({call,_From},drain,Data)->
-    {next_state,server_stopping,Data};
+init_coor({call,From},drain,Data)->
+    {_From1,_Name1,_From2,_Name2,CurrentRound,_Rounds,_Name1Wins,_Name2Wins}=Data,
+    gen_statem:reply(From,server_stopping),
+    {next_state,server_stopping,CurrentRound};
 init_coor({call,From},ask,Data)->
-    {_From1,_Name1,_From2,_Name2,CurrentRound,_Rounds,_Name1Wins,_Name2Wins}=Data, 
-    {keep_state_and_data,[{reply,From,{ongoing,CurrentRound}}]};
+    {_From1,_Name1,_From2,_Name2,CurrentRound,_Rounds,_Name1Wins,_Name2Wins}=Data,
+    gen_statem:reply(From, {ongoing,CurrentRound}),
+    keep_state_and_data;
 init_coor({call,From},{move,Choice},Data)->
     {From1,Name1,From2,Name2,CurrentRound,Rounds,Name1Wins,Name2Wins}=Data,
     {Pid,_}=From,
     {Pid1,_}=From1,
     {Pid2,_}=From2,
     case (Pid==Pid1) orelse (Pid==Pid2) of
-        true->
-            if Pid1==Pid ->{next_state,one_choice,{From1,Name1,Choice,From2,Name2,CurrentRound,Rounds,Name1Wins,Name2Wins}};
-                true->{next_state,one_choice,{From2,Name2,Choice,From1,Name1,CurrentRound,Rounds,Name2Wins,Name1Wins}}
+        true-> case Pid1==Pid of
+            true->{next_state,one_choice,{From,Name1,Choice,From2,Name2,CurrentRound,Rounds,Name1Wins,Name2Wins}};
+            false->{next_state,one_choice,{From,Name2,Choice,From1,Name1,CurrentRound,Rounds,Name2Wins,Name1Wins}}
             end;
         false->{keep_state_and_data,[{reply,From,notmatch}]}
     end.
-% init_coor({call,From},getData,Data)->{keep_state_and_data,[{reply,From,Data}]}.
 
-one_choice({call,_},drain,Data)->
-    {next_state,server_stopping,Data};
+one_choice({call,From},drain,Data)->
+    {From1,_Name1,_Choice1,_From2,_Name2,CurrentRound,_Rounds,_Name1Wins,_Name2Wins}=Data,
+    gen_statem:reply(From,server_stopping), 
+    gen_statem:reply(From1,server_stopping),
+    {next_state,server_stopping,CurrentRound};
 one_choice({call,From},ask,Data)->
     {_From1,_Name1,_Choice1,_From2,_Name2,CurrentRound,_Rounds,_Name1Wins,_Name2Wins}=Data,
-    {keep_state_and_data,[{reply,From,{ongoing,CurrentRound}}]};
+    gen_statem:reply(From,{ongoing,CurrentRound}),
+    keep_state_and_data;
 one_choice({call,From},{move,Choice2},Data)->
     {From1,Name1,Choice1,From2,Name2,CurrentRound,Rounds,Name1Wins,Name2Wins}=Data,
     {Pid,_}=From,
@@ -55,50 +60,50 @@ one_choice({call,From},{move,Choice2},Data)->
         false->{keep_state_and_data, [postpone]};
         true->
         UpdateRound=CurrentRound+1,
-        case UpdateRound == Rounds of
-            false->
-                case judge(Choice1,Choice2) of
-                    win->
+        case judge(Choice1,Choice2) of
+            win->
+                NewName1Wins=Name1Wins+1,
+                case NewName1Wins>(Rounds/2) of
+                    false-> 
                         gen_statem:reply(From1,win),
-                        gen_statem:reply(From2, {loss,Choice1}),
-                        {next_state,init_coor,{From1,Name1,From2,Name2,UpdateRound,Rounds,[UpdateRound|Name1Wins],Name2Wins}};
-                    lose->
-                        gen_statem:reply(From2,win),
-                        gen_statem:reply(From1, {loss,Choice1}),
-                        {next_state,init_coor,{From1,Name1,From2,Name2,UpdateRound,Rounds,Name1Wins,[UpdateRound|Name2Wins]}};
-                    tie->
-                        gen_statem:reply(From1,tie),
-                        gen_statem:reply(From2,tie),
-                        {next_state,init_coor,{From1,Name1,From2,Name2,UpdateRound,Rounds,Name1Wins,Name2Wins}}
+                        gen_statem:reply(From, {loss,Choice1}),
+                        {next_state,init_coor,{From1,Name1,From,Name2,UpdateRound,Rounds,NewName1Wins,Name2Wins}};
+                    true-> 
+                        gen_statem:reply(From1,{game_over,NewName1Wins,Name2Wins}),
+                        gen_statem:reply(From,{game_over,Name2Wins,NewName1Wins}),
+                        {next_state,end_of_state,UpdateRound}
                 end;
-            true->
-                case judge(Choice1,Choice2) of
-                    win->
-                        gen_statem:reply(From1,{game_over,lists:sort([UpdateRound|Name1Wins]),lists:sort(Name2Wins)}),
-                        gen_statem:reply(From2,{game_over,lists:sort(Name2Wins),lists:sort([UpdateRound|Name1Wins])}),
-                        {next_state,end_state,Rounds,[]};
-                    tie->
-                        gen_statem:reply(From1,{game_over,lists:sort(Name1Wins),lists:sort(Name2Wins)}),
-                        gen_statem:reply(From2,{game_over,lists:sort(Name2Wins),lists:sort(Name1Wins)}),
-                        {next_state,end_state,Rounds};
-                    lose->
-                        gen_statem:reply(From2,{game_over,lists:sort([UpdateRound|Name2Wins]),lists:sort(Name1Wins)}),
-                        gen_statem:reply(From1,{game_over,lists:sort(Name1Wins),lists:sort([UpdateRound|Name2Wins])}),
-                        {next_state,end_state,Rounds}
-                end
+            lose-> 
+                NewName2Wins=Name2Wins+1,
+                case NewName2Wins>(Rounds/2) of
+                    false->
+                        gen_statem:reply(From,win),
+                        gen_statem:reply(From1, {loss,Choice2}),
+                        {next_state,init_coor,{From1,Name1,From,Name2,UpdateRound,Rounds,Name1Wins,NewName2Wins}};
+                    true-> 
+                        gen_statem:reply(From1,{game_over,Name1Wins,NewName2Wins}),
+                        gen_statem:reply(From,{game_over,NewName2Wins,Name1Wins}),
+                        {next_state,end_of_state,UpdateRound}
+                end;
+            tie-> 
+                gen_statem:reply(From1,tie),
+                gen_statem:reply(From,tie),
+                {next_state,init_coor,{From1,Name1,From,Name2,UpdateRound ,Rounds,Name1Wins,Name2Wins}}
         end
     end
 end.
 
-
-server_stopping({call,From},_,_)->{keep_state_and_data,[{reply,From,server_stopping}]}.
-end_state({call,_From},drain,Data)->
+end_of_state({call,From},drain,Data)->
+    gen_statem:reply(From, server_stopping),
     {next_state,server_stopping,Data};
-end_state({call,From},ask,Data)->
-    {keep_state_and_data,[{reply,From,{end_state,Data}}]};
-end_state({call,From},_,Data)->{keep_state_and_data,[{reply,From,{end_state,Data}}]}.
-terminate(_Reason, _State, _Data) ->
-    ok.
+end_of_state({call,From},ask,Data)->
+    {keep_state_and_data,[{reply,From,{end_of_state,Data}}]};
+end_of_state({call,_},_,_)->{keep_state_and_data,[postpone]}.
+server_stopping({call,From},ask,Data)->gen_statem:reply(From,Data),keep_state_and_data;
+server_stopping({call,From},{queue_up,_,_},_)->gen_statem:reply(From,server_stopping),keep_state_and_data;
+server_stopping({call,From},{move,_},_)->gen_statem:reply(From,server_stopping),keep_state_and_data;
+server_stopping({call,From},_,_)-> gen_statem:reply(From,server_stopping),keep_state_and_data.
+
 judge(rock,paper)->lose;
 judge(paper,rock)->win;
 judge(paper,scissors)->lose;
@@ -117,10 +122,12 @@ judge(_,scissors)->lose.
 
 
 
-broker({call,_},drain,Data)->
+broker({call,From},drain,Data)->
     CorList=find_coor_list(Data),
+    LongestGame=find_longest_game(CorList),
+    lists:map(fun(Queue)->gen_statem:reply(Queue, server_stopping)end,find_all_queue(Data)),
     lists:map(fun(Cor)->gen_statem:call(Cor,drain) end,CorList),
-    {next_state,server_stopping,Data};
+    {next_state,server_stopping,{ok,LongestGame,0,0},[{reply,From,server_stopping}]};
 broker({call,From},ask,Data)->
     CorList=find_coor_list(Data),
     LongestGame=find_longest_game(CorList),
@@ -143,8 +150,9 @@ addcoor(Coordinator,List)->
         [{grouped,From1,Name1,From,Name,Rounds}|Rest]->[{grouped,From1,Name1,From,Name,Rounds}|addcoor(Coordinator,Rest)];
         [{coordinatorList,CorList}|Rest]->[{coordinatorList,[Coordinator|CorList]}|Rest]
     end.
+cal_ongoing([])->0;
 cal_ongoing(CorList)->
-    lists:sum(lists:map(fun(Cor)->case gen_statem:call(Cor,ask) of {end_state,_}->0; {ongoing,_}->1 end end,CorList)).
+    lists:sum(lists:map(fun(Cor)->case gen_statem:call(Cor,ask) of {end_of_state,_}->0; {ongoing,_}->1;_->0 end end,CorList)).
 cal_inqueue(List)->
     case List of
         []->0;
@@ -153,20 +161,27 @@ cal_inqueue(List)->
     end.
 find_coor_list(List)->
     case List of
-        []->[0];
+        []->[];
         [{need_group,_,_,_}|Rest]->find_coor_list(Rest);
         [{grouped,_,_,_,_,_}|Rest]->find_coor_list(Rest); 
         [{coordinatorList,CorList}|_Rest]->CorList
     end.
+find_longest_game([])->0;
 find_longest_game(CorList)->
-    lists:max(lists:map(fun(Cor)->{_,Rounds}=gen_statem:call(Cor,ask),Rounds end,CorList)).
-
+    % throw(lists:map(fun(Cor)->case gen_statem:call(Cor,ask) of {_,Rounds}->Rounds;Rounds->Rounds end end,CorList)),
+    lists:max(lists:map(fun(Cor)->case gen_statem:call(Cor,ask) of {_,Rounds}->Rounds;Rounds->Rounds end end,CorList)).
+find_all_queue(List)->
+    case List of 
+    []->[];
+    [{need_group,From,_Name,_Rounds}|Rest]->[From|find_all_queue(Rest)];
+    [_|Rest]->find_all_queue(Rest)
+end.
 find_group(Rounds,List)->
     case List of
         []->none;
         [{need_group,From,Name,Rounds1}|Rest]-> 
             if 
-            Rounds == Rounds -> {From,Name,Rounds1}; 
+            Rounds == Rounds1 -> {From,Name,Rounds1}; 
             true->find_group(Rounds,Rest) 
             end;
         [{grouped,_,_,_,_,_}|Rest]->find_group(Rounds, Rest);
@@ -174,5 +189,4 @@ find_group(Rounds,List)->
     end.
 callback_mode()->state_functions.
 init(init_broker)->{ok, broker,[]};
-init({init_coor,From1,Name1,From,Name,Rounds})->{ok,init_coor,{From1,Name1,From,Name,0,Rounds,[],[]}}.
-
+init({init_coor,From1,Name1,From,Name,Rounds})->{ok,init_coor,{From1,Name1,From,Name,0,Rounds,0,0}}.
