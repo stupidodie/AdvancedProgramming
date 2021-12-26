@@ -1,361 +1,341 @@
--- Skeleton file for Boa Parser.
-
 module BoaParser (ParseError, parseString) where
 
+import Text.ParserCombinators.ReadP
+import Control.Applicative ((<|>))
 import BoaAST
-  ( CClause (..),
-    Exp (..),
-    Op (Div, Eq, Greater, In, Less, Minus, Mod, Plus, Times),
-    Program,
-    Stmt (..),
-    Value (FalseVal, IntVal, NoneVal, StringVal, TrueVal),
-  )
--- import Debug.Trace
-import Data.Char (isLetter, isNumber, isPrint)
-import Text.ParserCombinators.Parsec
--- add any other other imports you need
+import Data.Char (isSpace, isDigit, isAlpha, isAlphaNum, isPrint)
+import Data.List
 
--- Due to the library Text.ParserCombinators.Parsec
---  already defined the ParseError, so there is no
---  need to redefine this
--- type ParseError = String -- you may replace this
+type Parser a = ReadP a
+
+type ParseError = String
 
 parseString :: String -> Either ParseError Program
-parseString = runParser (do e<-program; eof;return e) () ""
+parseString s =
+   case readP_to_S (do whitespace; comments; r <- program; eof; return r) s of
+                [] -> Left "Cannot parse."
+                [(a,_)] -> Right a
+                _ -> error "Ambiguous grammar"
 
 program :: Parser Program
-program =   lexeme stmts
+program = stmts
 
 stmts :: Parser [Stmt]
-stmts =
-  try
-    ( do
-        s <- stmt
+stmts = do
+        n <- stmt
         symbol ";"
-        l <- stmts
-        return (s : l)
-    )
-    <|> do
-      s <- stmt
-      return [s]
+        n1 <- stmts
+        return (n:n1)
+       <|>
+        do
+        n <- stmt
+        return [n]
 
 stmt :: Parser Stmt
-stmt =lexeme $
-  try
-    ( do
-        vname <- ident
-        symbol "="
-        SDef vname <$> expParse
-    )
-    <|> do
-      SExp <$> expParse
+stmt = do
+       name <- ident
+       symbol "="
+       SDef name <$> expp
+       <|>
+       do
+       SExp <$> expp
 
--- We list the following 4 types of different priority of operators
--- Priority:Op1>Op2>Op3>Op4
--- Left factoring: Op1: %, *, //
--- Left factoring: Op2: +, -
--- None factoring: Op3: ==, !=, <, <=, >, >=
--- None factoring: Op4: in, not in,
--- Thus we rewrite the grammar in the Expr Oper Expr
--- Exp  = Exp1 Op4 Exp1 | Exp1
--- Exp1 = Exp2 Op3 Exp2 | Exp2
--- Exp2 = Exp4 Exp3
--- Exp3 = Op2 Exp4 Exp3| eps
--- Exp4 = Exp6 Exp5
--- Exp5 = Op1 Exp6 Exp5| eps
--- Exp6 = Value
-expParse :: Parser Exp
-expParse = lexeme $ try
-  (do
-      e1<- exp1
-      skipMany1 space
-      string "in"
-      Oper In e1 <$> exp1
-  )
-  <|> try
-    (
-      do
-        e1<- exp1
-        string "not"
-        skipMany1 space
-        string "in"
-        Not . Oper In e1 <$> exp1
-    )
-    <|>exp1
+-- Disambiguated grammar (only expressions and operators has been changed)
 
-exp1 :: Parser Exp
-exp1 = try
-    ( do
-        e1 <- exp2
-        symbol "=="
-        Oper Eq e1 <$> exp2
-    )
-    <|> try
-      ( do
-          e1 <- exp2
-          symbol "!="
-          Not . Oper Eq e1 <$> exp2
-      )
-    <|> try
-      ( do
-          e1 <- exp2
-          symbol "<"
-          Oper Less e1 <$> exp2
-      )
-    <|> try
-      ( do
-          e1 <- exp2
-          symbol ">"
-          Oper Greater e1 <$> exp2
-      )
-    <|> try
-      ( do
-          e1 <- exp2
-          symbol "<="
-          Not . Oper Greater e1 <$> exp2
-      )
-    <|> try
-      ( do
-          e1 <- exp2
-          symbol ">="
-          Not . Oper Less e1 <$> exp2
-      )
-    <|> try exp2
-exp2 :: Parser Exp
-exp2 = do
-  e1 <- exp4
-  spaces
-  e2 <- exp3
-  case e2 of
-    Nothing -> return e1
-    Just e -> return (e e1)
+-- First level of precedence with 'not'
+expp :: Parser Exp
+expp = do
+       keyword "not"
+       Not <$> expp
+       <|>
+       do
+         e1 <- e
+         expp' e1
 
-exp3 :: Parser (Maybe (Exp -> Exp))
-exp3 =lexeme $
-  do
-    symbol "+"
-    e1 <- exp4
-    spaces
-    e2 <- exp3
-    case e2 of
-      Nothing -> return (Just (\e -> Oper Plus e e1))
-      Just e -> return (Just (\e' -> e (Oper Plus e' e1)))
-  <|> do
-      symbol "-"
-      e1 <- exp4
-      spaces
-      e2 <- exp3
-      case e2 of
-        Nothing -> return (Just (\e -> Oper Minus e e1))
-        Just e -> return (Just (\e' -> e (Oper Minus e' e1)))
-  <|> return Nothing
-exp4 :: Parser Exp
-exp4 = lexeme $ do
-  e1 <- exp6
-  spaces
-  e2 <- exp5
-  case e2 of
-    Nothing -> return e1
-    Just e -> return (e e1)
-exp5 :: Parser (Maybe (Exp -> Exp))
-exp5 =lexeme $
-  do
-    symbol "%"
-    e1 <- exp6
-    spaces
-    e2 <- exp5
-    case e2 of
-      Nothing -> return (Just (\e -> Oper Mod e e1))
-      Just e -> return (Just (\e' -> e (Oper Mod e' e1)))
-    <|> do
-      symbol "//"
-      e1 <- exp6
-      spaces
-      e2 <- exp5
-      case e2 of
-        Nothing -> return (Just (\e -> Oper Div e e1))
-        Just e -> return (Just (\e' -> e (Oper Div e' e1)))
-    <|> do
-      symbol "*"
-      e1 <- exp6
-      spaces
-      e2 <- exp5
-      case e2 of
-        Nothing -> return (Just (\e -> Oper Times e e1))
-        Just e -> return (Just (\e' -> e (Oper Times e' e1)))
-    <|> return Nothing
+-- Second level of precdence with relational operators. Notice that they are
+-- non-associative and therefore the function is not recursive.
+expp' :: Exp -> Parser Exp
+expp' e1 = do {symbol "=="; Oper Eq e1 <$> e}
+        <|>
+        do {symbol "!="; Not . Oper Eq e1 <$> e}
+        <|>
+        do {symbol "<"; Oper Less e1 <$> e}
+        <|>
+        do {symbol "<="; Not . Oper Greater e1 <$> e;}
+        <|>
+        do {symbol ">"; Oper Greater e1 <$> e}
+        <|>
+        do {symbol ">="; Not . Oper Less e1 <$> e}
+        <|>
+        do {satisfy isSpace ; keyword "in"; Oper In e1 <$> e}
+        <|>
+        do {keyword "not"; keyword "in"; Not . Oper In e1 <$> e}
+        <|>
+        do
+          return e1
 
-exp6 :: Parser Exp
-exp6 = lexeme exprParser
+-- Third level of precedence where plus and minus is handled. These operators
+-- are left-associative. Grammar is split into e and e' to avoid left-recursion.
+e :: Parser Exp
+e = do
+      _t <- t
+      e' _t
 
-exprParser :: Parser Exp
-exprParser =
- try numConst
-    <|> try (
-      do
+e' :: Exp -> Parser Exp
+e' e1 = do
+          symbol "+";
+          _t <- t;
+          e' (Oper Plus e1 _t)
+        <|>
+        do
+          symbol "-";
+          _t <- t;
+          e' (Oper Minus e1 _t)
+        <|>
+          return e1
+
+-- Fourth level of precedence, here mul, div and mod is handled.
+t :: Parser Exp
+t = do
+      _f <- f
+      t' _f
+
+t' :: Exp -> Parser Exp
+t' t1 = do
+          symbol "*";
+          _f <- f;
+          t' (Oper Times t1 _f)
+        <|>
+        do
+          symbol "//";
+          _f <- f;
+          t' (Oper Div t1 _f)
+        <|>
+        do
+          symbol "%";
+          _f <- f;
+          t' (Oper Mod t1 _f)
+        <|>
+          return t1
+
+-- Note that <++ is used to bias the parser towards the left choice, speeding
+-- things up.
+f :: Parser Exp
+f = do
+      Var <$> ident
+    <|>
+      numConst
+    <|>
+      stringConst
+    <|>
+    do
       symbol "None"
       return (Const NoneVal)
-    )
-    <|> try (do
-      symbol "True"
-      return (Const TrueVal)
-    )
-    <|> do
+    <|>
+    do
       symbol "False"
       return (Const FalseVal)
-    -- First, try whether the call can be match
-    <|> try
-      ( do
-          s <- ident
-          symbol "("
-          l <- exprz
-          symbol ")"
-          return (Call s l)
-      )
-    <|> try(
-      do
-      string "not"
-      skipMany1 space <|> try (do string "#"; skipMany (satisfy (/= '\n')); return ())
-      Not <$> expParse
-    )
-    <|> try (do
+    <|>
+    do
+      symbol "True"
+      return (Const TrueVal)
+    <|>
+    do
       symbol "("
-      e <- expParse
+      e1 <- expp
       symbol ")"
-      return e
-    )
-    <|> try (
-      Var <$> ident
-    )
-    <|> try
-      ( do
-          symbol "["
-          e <- exprz
-          symbol "]"
-          return (List e)
-      )
-    <|> try (
-      do
+      return e1
+    <|>
+    do
       symbol "["
-      exp <- expParse
-      forcc <- forClause
-      l <- clausez
+      es <- expz
       symbol "]"
-      return (Compr exp (forcc : l))
-    )
-    <|> stringConst
+      return (List es)
+    <++
+    do
+      symbol "["
+      char '('
+      e1 <- expp
+      char ')'
+      f <- forc
+      cs <- clausez [f]
+      symbol "]"
+      return (Compr e1 cs)
+    <++
+    do
+      symbol "["
+      e1 <- expp
+      satisfy isSpace
+      f <- forc
+      cs <- clausez [f]
+      symbol "]"
+      return (Compr e1 cs)
+    <++
+    do
+      i <- ident
+      symbol "("
+      e <- expz
+      symbol ")"
+      return (Call i e)
 
-ifClause :: Parser CClause
-ifClause = do
-  string "if"
-  skipMany1 space
-  CCIf <$> expParse
 
-forClause :: Parser CClause
-forClause = do
-  string "for"
-  skipMany1 space
-  vname <- ident
-  skipMany1 space
-  string "in"
-  skipMany1 space
-  CCFor vname <$> expParse
+forc :: Parser CClause
+forc = do
+      keyword "for"
+      i <- ident
+      keyword "in"
+      CCFor i <$> expp
 
-clausez :: Parser [CClause]
-clausez =
-  do
-    forcc <- forClause
-    listcc <- clausez
-    return (forcc : listcc)
-  <|> do
-      ifcc <- ifClause
-      listcc <- clausez
-      return (ifcc : listcc)
-  <|> return []
+ifc :: Parser CClause
+ifc = do
+      keyword "if"
+      CCIf <$> expp
 
-exprz :: Parser [Exp]
-exprz =
-  exprs
-    <|> return []
+clausez :: [CClause] -> Parser [CClause]
+clausez cs = do
+        for <- forc
+        clausez (cs ++ [for])
+       <|>
+       do
+        _if <- ifc
+        clausez (cs ++ [_if])
+       <|>
+        return cs
 
-exprs :: Parser [Exp]
-exprs =
-  try
-    ( do
-        exp <- expParse
+expz :: Parser [Exp]
+expz = do
+        n <- expp
+        exps n
+        <|>
+        return []
+
+exps :: Exp -> Parser [Exp]
+exps e = do
         symbol ","
-        l <- exprs
-        return (exp : l)
-    )
-    <|> do
-      exp <- expParse
-      return [exp]
+        n1 <- expp
+        n2 <- exps n1
+        return (e:n2)
+        <|>
+        do
+          return [e]
 
-symbol :: String -> Parser ()
-symbol s = lexeme $ do
-  string s
-  return ()
+
+--- Handling of numConst
+numConst :: Parser Exp
+numConst = do
+        Const . IntVal <$> pNum
+       <|>
+       do
+        symbolNoWhiteSpace "-"
+        n <- pNumNoWhiteSpace
+        return (Const (IntVal (-n)))
+
+pNum :: Parser Int
+pNum = lexeme pNumNoWhiteSpace
+
+-- pNumWhiteSpace is used to handle "- 4" which is not allowed.
+pNumNoWhiteSpace :: Parser Int
+pNumNoWhiteSpace = do
+  n <- satisfy (\number -> number /= '0' && isDigit number)
+  n1 <- munch1 isDigit
+  return $ read (n : n1)
+  <|>
+  do
+  n <- satisfy isDigit
+  return $ read [n]
+
+-- Handling of identifiers
+reserved :: [String]
+reserved = ["None", "True", "False", "for", "if", "in", "not"]
+
+alphaNumOr_ :: Char -> Bool
+alphaNumOr_ c = c == '_' || isAlphaNum c
+
+alphaOr_ :: Char -> Bool
+alphaOr_ c = c == '_' || isAlpha c
 
 ident :: Parser String
-ident =  do
-  first <- satisfy (\x -> x == '_' || isLetter x)
-  rest <- many $satisfy (\x -> x == '_' || isLetter x || isNumber x)
-  ( \s ->
-      if s `elem` ["None", "True", "False", "for", "if", "in", "not"]
-        then unexpected $ "ident Name Crash: " ++ s
-        else return s
-    )
-    (first : rest)
+ident = lexeme $ do
+  c <- satisfy alphaOr_
+  cs <- munch alphaNumOr_
+  let word = c:cs
+  if word `notElem` reserved then return word
+  else pfail
 
-numConst :: Parser Exp
-numConst =
-  try
-    ( do
-        satisfy (== '-')
-        numFirst <- digit
-        numRest <- many digit
-        if numFirst == '0' && numRest /= []
-          then unexpected $ "illegal Number " ++ (numFirst : numRest)
-          else return (Const (IntVal (-1 * (read :: String -> Int) (numFirst : numRest))))
-    )
-    <|> do
-      numFirst <- digit
-      numRest <- many digit
-      if numFirst == '0' && numRest /= []
-        then unexpected $ "illegal Number " ++ (numFirst : numRest)
-        else return (Const (IntVal ((read :: String -> Int) (numFirst : numRest))))
-stringCheck:: Parser String
-stringCheck = try (
-    do
-      a <- satisfy (\x->isPrint x||x=='\\'||x=='\n')
-      if a == '\''
-        then unexpected "Meet the end"
-        else if a == '\\'
-            then do
-              b<- satisfy (\x->isPrint x||x=='\\'||x=='\n')
-              case b of
-                'n'-> return "\n"
-                '\''-> return [b]
-                '\n'-> return ""
-                '\\'-> return "\\"
-                _->unexpected $ "After \\ is an unacceptable char" ++ show b
-            else return [a] )
+-- Handling of stringConst
+
+-- checks if the strings contains illegal characters and that the characters
+-- are printable. illegal chars are ' and \, unless escaped, i.e. \i and \\
+stringChecker :: Char -> Bool
+stringChecker c = (c /= '\'') && (c /= '\\') && isPrint c
+
+stringSatisfyer :: Parser String
+stringSatisfyer = do
+  c <- get
+  if stringChecker c then do
+    return [c]
+  else
+    if c == '\\' then do
+      c1 <- get
+      case c1 of
+        '\\' -> return [c1]
+        '\'' -> return [c1]
+        'n' -> return ['\n']
+        '\n' -> return ""
+        _ -> pfail
+    else
+      pfail
+
 stringConst :: Parser Exp
 stringConst = do
-  char '\''
-  comment
-  s <- many stringCheck
-  char '\''
-  if concat s=="\n"
-    then unexpected "Cannot be the raw newline"
-    else return (Const (StringVal (concat s)))
-comment::Parser ()
-comment=try (
-  do
-    string "#"
-    skipMany (satisfy (/= '\n'))
-    -- char '\n'
-    return ()
-  )<|> return ()
+   char '\''
+   ds <- many stringSatisfyer
+   symbol "'"
+   return (Const (StringVal (intercalate "" ds)))
+
+-- Utility functions
+-- Added function for checking if something is a comment and then ignoring it.
+comments :: Parser ()
+comments = do
+           many comment
+           return ()
+
+comment :: Parser ()
+comment = do
+           string "#"
+           munch (/= '\n')
+           char '\n'
+           return ()
+          <|>
+          do
+           string "#"
+           munch (/= '\n')
+           eof
+
+whitespace :: Parser ()
+whitespace = do many (satisfy isSpace); return ()
+
 lexeme :: Parser a -> Parser a
-lexeme x = do spaces; comment; a <- x; spaces; comment; return a
+lexeme p = do a <- p; whitespace; comments; return a
+
+
+symbol :: String -> Parser ()
+symbol s = lexeme $ do string s; return ()
+
+keyword :: String -> Parser ()
+keyword s = lexeme $ do
+  string s
+  (c:_) <- look;
+  if isAlphaNum c then
+    pfail
+  else return ()
+
+-- used throughout the functionality where we do not want 'lexeme' to 
+-- interact with whitespace, e.g. within strings.
+symbolNoWhiteSpace :: String -> Parser ()
+symbolNoWhiteSpace s = do string s; return ()
+
+
+
+
+

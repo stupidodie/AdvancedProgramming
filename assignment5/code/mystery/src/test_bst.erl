@@ -15,16 +15,24 @@
 %% insert values in to a leaf
 
 %The Original bst
-%%bst(Key, Value) ->
-%%  ?LET(KVS, eqc_gen:list({Key, Value}),%       lists:foldl(fun({K,V}, T) -> insert(K, V, T) end,
-%%                  empty(),
-%%                 KVS)).
-bst()->
-    ?LAZY(
-       oneof([{call,bst,empty,[]},
-              ?LET(T,bst(),
-                   {call,bst,insert,[atom_key(),int_value(),T]})])
-        ).
+bst(Key, Value) ->
+ ?LET(KVS, eqc_gen:list({Key, Value}),%       lists:foldl(fun({K,V}, T) -> insert(K, V, T) end,
+                 empty(),
+                KVS)).
+%bst()->
+%    ?LAZY(
+%       oneof([{call,bst,empty,[]},
+%              ?LET(T,bst(),
+%                   {call,bst,insert,[atom_key(),int_value(),T]})])
+%        ).
+% bst()->?SIZED(Size,subbst(Size)).
+% subbst(0)->{call,bst,empty,[]};
+% subbst(Size)->
+% T=subbst(Size div 2),
+% oneof([
+%   subbst(0),
+%   {call,bst,insert,[atom_key(),int_value(),T]}
+% ]).
 
 %% foldl(Fun, Acc0, List) -> Acc1
 %% Types

@@ -185,7 +185,7 @@ tests = testGroup "Parser Tests: " [
   ],
   testGroup "Comment"[
     testCase "Comment 1" $
-      parseString "x=[i for i in range(1,5,1)];#comment\n print(x)" @?=
+      parseString "x=[i for i in range(1,5,1)];#comment\nprint(x)" @?=
         Right [SDef "x" (Compr (Var "i") [CCFor "i" (Call "range" [Const (IntVal 1),Const (IntVal 5),Const (IntVal 1)])]),SExp (Call "print" [Var "x"])],
     testCase "Comment 2" $
       parseString "2+#Comments\n3" @?=

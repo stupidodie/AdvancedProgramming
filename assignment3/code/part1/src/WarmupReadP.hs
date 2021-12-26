@@ -11,7 +11,7 @@ module WarmupReadP where
 --   E::= TE'| "-"TE'
 --   E'::="+"TE'|"-"TE'| ϵ
 --   T::=num| "(" E ")"
-
+import Debug.Trace
 import Control.Applicative ((<|>))
 import Data.Char ( isNumber )
 import Text.ParserCombinators.ReadP
